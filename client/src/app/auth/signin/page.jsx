@@ -13,7 +13,7 @@ function MainComponent() {
     const [passwordVisible, setPasswordVisible] = useState(false);
     const [showPhoneModal, setShowPhoneModal] = useState(false);
     const [googlePhoneNumber, setGooglePhoneNumber] = useState("");
-    const [googleUserData, setGoogleUserData] = useState(null);
+    const [googleTempData, setGoogleTempData] = useState(null);
 
     const onSubmit = async (e) => {
         e.preventDefault();
@@ -34,7 +34,7 @@ function MainComponent() {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email: email.toLowerCase(), password }),
             });
             const data = await res.json();
             console.log('Login response:', data); // Debug log
@@ -42,6 +42,7 @@ function MainComponent() {
             localStorage.setItem('token', data.token);
             console.log('Token saved:', localStorage.getItem('token')); // Debug log
             // Redirect based on user role
+            if (!data.user) throw new Error('User data missing in response');
             if (data.user.role === 'admin') {
                 window.location.href = '/AdminDashboard';
             } else if (data.user.role === 'cafe') {
@@ -71,15 +72,21 @@ function MainComponent() {
                 }),
             });
             const data = await res.json();
+            console.log('Google Sign-In response:', data); // Debug log
             if (!res.ok) throw new Error(data.message || 'Google Sign-In failed');
 
             // Check if user needs to provide phone number
-            if (data.message.includes("requires phone number")) {
-                // Store user data temporarily and show phone number modal
-                setGoogleUserData({ token: data.token, userId: data.user.id });
+            if (data.message.includes("Requires phone number")) {
+                // Store temporary token and user data, show phone number modal
+                setGoogleTempData({
+                    tempToken: data.tempToken,
+                    name: result.user.displayName,
+                    email: result.user.email
+                });
                 setShowPhoneModal(true);
             } else {
                 // Existing user with phone number, proceed with login
+                if (!data.user) throw new Error('User data missing in response');
                 localStorage.setItem('token', data.token);
                 // Redirect based on user role
                 if (data.user.role === 'admin') {
@@ -91,6 +98,7 @@ function MainComponent() {
                 }
             }
         } catch (err) {
+            console.error('Google Sign-In error:', err.message); // Debug log
             setError(err.message);
             setLoading(false);
         }
@@ -107,31 +115,34 @@ function MainComponent() {
         }
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/update-user`, {
-                method: 'PUT',
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google/complete`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${googleUserData.token}`,
                 },
                 body: JSON.stringify({
+                    tempToken: googleTempData.tempToken,
                     phone_number: googlePhoneNumber,
                 }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update phone number');
+            console.log('Phone submission response:', data); // Debug log
+            if (!res.ok) throw new Error(data.message || 'Failed to complete registration');
 
-            // Phone number updated successfully, store token and redirect
-            localStorage.setItem('token', googleUserData.token);
+            // Registration completed successfully, store token and redirect
+            localStorage.setItem('token', data.token);
             setShowPhoneModal(false);
             // Redirect based on user role
-            if (data.user && data.user.role === 'admin') {
+            if (!data.user) throw new Error('User data missing in response');
+            if (data.user.role === 'admin') {
                 window.location.href = '/AdminDashboard';
-            } else if (data.user && data.user.role === 'cafe') {
+            } else if (data.user.role === 'cafe') {
                 window.location.href = '/CafeDashboard';
             } else {
                 window.location.href = '/';
             }
         } catch (err) {
+            console.error('Phone submission error:', err.message); // Debug log
             setError(err.message);
         }
     };

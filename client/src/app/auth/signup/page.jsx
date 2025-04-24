@@ -19,7 +19,7 @@ function MainComponent() {
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [googlePhoneNumber, setGooglePhoneNumber] = useState("");
-  const [googleUserData, setGoogleUserData] = useState(null);
+  const [googleTempData, setGoogleTempData] = useState(null);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -102,9 +102,9 @@ function MainComponent() {
       if (!res.ok) throw new Error(data.message || 'Google Sign-In failed');
       
       // Check if user needs to provide phone number
-      if (data.message.includes("requires phone number")) {
-        // Store user data temporarily and show phone number modal
-        setGoogleUserData({ token: data.token, userId: data.user.id });
+      if (data.message.includes("Requires phone number")) {
+        // Store temporary token and show phone number modal
+        setGoogleTempData({ tempToken: data.tempToken, name: result.user.displayName, email: result.user.email });
         setShowPhoneModal(true);
       } else {
         // Existing user with phone number, proceed with login
@@ -128,21 +128,21 @@ function MainComponent() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/update-user`, {
-        method: 'PUT',
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google/complete`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${googleUserData.token}`,
         },
         body: JSON.stringify({
+          tempToken: googleTempData.tempToken,
           phone_number: googlePhoneNumber,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to update phone number');
+      if (!res.ok) throw new Error(data.message || 'Failed to complete registration');
       
-      // Phone number updated successfully, store token and redirect
-      localStorage.setItem('token', googleUserData.token);
+      // Registration completed successfully, store token and redirect
+      localStorage.setItem('token', data.token);
       setShowPhoneModal(false);
       window.location.href = '/';
     } catch (err) {

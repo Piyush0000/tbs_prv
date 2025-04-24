@@ -22,8 +22,8 @@ router.post('/register', async (req, res) => {
         if (!/^\d{10}$/.test(phone_number)) {
             return res.status(400).json({ message: "Phone number must be 10 digits" });
         }
-        // Check if the user already exists
-        let existingUser = await User.findOne({ email });
+        // Check if the user already exists (case-insensitive)
+        let existingUser = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
         if (existingUser) {
             return res.status(400).json({ message: "User with this email already exists." });
         }
@@ -32,12 +32,12 @@ router.post('/register', async (req, res) => {
         let count = await User.countDocuments();
         let user_id = `User_${String(count + 1).padStart(3, '0')}`; // e.g., User_001, User_002, ...
 
-        // Create a new user
+        // Create a new user with normalized email
         const newUser = new User({
             user_id,
             name,
             phone_number,
-            email,
+            email: email.toLowerCase(),
             password,
             role: 'user'
         });
@@ -57,7 +57,8 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const user = await User.findOne({ email });
+        // Case-insensitive email query
+        const user = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
         if (!user) {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
@@ -70,7 +71,8 @@ router.post('/login', async (req, res) => {
         console.log('Generated token:', token); // Debug log
         res.status(200).json({ token, user: { id: user._id, email: user.email, role: user.role } });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Login Error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -81,43 +83,124 @@ router.post('/google', async (req, res) => {
         // Verify Firebase ID token
         const decodedToken = await admin.auth().verifyIdToken(idToken);
         if (decodedToken.email !== email) {
+            console.error(`Email mismatch: Firebase=${decodedToken.email}, Request=${email}`);
             return res.status(400).json({ message: 'Email mismatch' });
         }
 
-        // Check if user exists
-        let user = await User.findOne({ email });
-        if (!user) {
-            // Register new user
-            if (!name || !email) {
-                return res.status(400).json({ message: 'Name and email are required' });
-            }
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                return res.status(400).json({ message: "Invalid email format" });
-            }
+        // Normalize email for query
+        const normalizedEmail = email.toLowerCase();
+        console.log(`Looking up user with email: ${normalizedEmail}`);
 
-            let count = await User.countDocuments();
-            let user_id = `User_${String(count + 1).padStart(3, '0')}`;
-
-            user = new User({
-                user_id,
-                name,
-                email,
-                phone_number: null, // Set to null initially
-                password: null, // No password for Google users
-                role: 'user'
+        // Check if user exists (case-insensitive)
+        let user = await User.findOne({ email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') } });
+        if (user) {
+            console.log(`User found: ${JSON.stringify(user, null, 2)}`);
+            // Validate user document
+            if (!user._id || !user.email) {
+                console.error(`Invalid user document for email ${normalizedEmail}: ${JSON.stringify(user)}`);
+                return res.status(500).json({ message: 'Invalid user data in database' });
+            }
+            // Ensure user has a role
+            if (!user.role) {
+                console.warn(`User ${normalizedEmail} found but missing role field. Assigning default role 'user'.`);
+                user.role = 'user';
+                await user.save();
+            }
+            // Existing user, generate JWT token
+            const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
+            return res.status(200).json({ 
+                token, 
+                user: { id: user._id, email: user.email, role: user.role, phone_number: user.phone_number },
+                message: "Logged in with Google"
             });
-            await user.save();
         }
 
-        // Generate JWT token
-        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        console.log(`No user found for email: ${normalizedEmail}. Proceeding with new user registration.`);
+
+        // New user, generate temporary token for phone number submission
+        if (!name || !email) {
+            return res.status(400).json({ message: 'Name and email are required' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ message: "Invalid email format" });
+        }
+
+        const tempToken = jwt.sign({ name, email: normalizedEmail, googleIdToken: idToken }, process.env.JWT_SECRET, { expiresIn: '1h' });
         res.status(200).json({ 
-            token, 
-            user: { id: user._id, email: user.email, role: user.role, phone_number: user.phone_number },
-            message: user.phone_number ? "Logged in with Google" : "Registered and requires phone number"
+            tempToken, 
+            message: "Requires phone number to complete registration"
         });
     } catch (error) {
         console.error('Google Sign-In Error:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+router.post('/google/complete', async (req, res) => {
+    try {
+        const { tempToken, phone_number } = req.body;
+
+        // Verify temporary token
+        let tempData;
+        try {
+            tempData = jwt.verify(tempToken, process.env.JWT_SECRET);
+        } catch (err) {
+            console.error(`Invalid or expired temporary token: ${err.message}`);
+            return res.status(401).json({ message: 'Invalid or expired temporary token' });
+        }
+
+        const { name, email, googleIdToken } = tempData;
+
+        // Re-verify Google ID token to ensure it's still valid
+        const decodedToken = await admin.auth().verifyIdToken(googleIdToken);
+        if (decodedToken.email !== email) {
+            console.error(`Email mismatch in /google/complete: Firebase=${decodedToken.email}, Temp=${email}`);
+            return res.status(400).json({ message: 'Email mismatch' });
+        }
+
+        // Validate phone number
+        if (!/^\d{10}$/.test(phone_number)) {
+            return res.status(400).json({ message: "Phone number must be 10 digits" });
+        }
+
+        // Check if phone number or email is already used
+        const existingUser = await User.findOne({ $or: [
+            { email: { $regex: new RegExp(`^${email}$`, 'i') } },
+            { phone_number }
+        ] });
+        if (existingUser) {
+            if (existingUser.email.toLowerCase() === email.toLowerCase()) {
+                return res.status(400).json({ message: "User with this email already exists" });
+            }
+            if (existingUser.phone_number === phone_number) {
+                return res.status(400).json({ message: "Phone number already in use" });
+            }
+        }
+
+        // Generate user_id
+        let count = await User.countDocuments();
+        let user_id = `User_${String(count + 1).padStart(3, '0')}`;
+
+        // Create new user with normalized email
+        const user = new User({
+            user_id,
+            name,
+            email: email.toLowerCase(),
+            phone_number,
+            password: null,
+            role: 'user'
+        });
+        await user.save();
+
+        // Generate JWT token
+        const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        res.status(201).json({ 
+            token, 
+            user: { id: user._id, email: user.email, role: user.role, phone_number: user.phone_number },
+            message: "User registered successfully with Google"
+        });
+    } catch (error) {
+        console.error('Google Sign-In Completion Error:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -131,8 +214,8 @@ router.post('/signup-admin', async (req, res) => {
     try {
         const { name, phone_number, email, password, subscription_type } = req.body;
 
-        // Check if the user already exists
-        let existingUser = await User.findOne({ email });
+        // Check if the user already exists (case-insensitive)
+        let existingUser = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
         if (existingUser) {
             return res.status(400).json({ message: "User with this email already exists." });
         }
@@ -141,12 +224,12 @@ router.post('/signup-admin', async (req, res) => {
         let count = await User.countDocuments();
         let user_id = `User_${String(count + 1).padStart(3, '0')}`; // e.g., User_001, User_002, ...
 
-        // Create a new admin user
+        // Create a new admin user with normalized email
         const newUser = new User({
             user_id,
             name,
             phone_number,
-            email,
+            email: email.toLowerCase(),
             password,
             subscription_type: subscription_type || 'premium',
             role: 'admin'

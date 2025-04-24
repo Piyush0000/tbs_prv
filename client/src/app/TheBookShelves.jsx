@@ -102,27 +102,27 @@ function TheBookShelves() {
   const carouselSlides = [
     {
       id: 1,
-      title: "New Releases",
+      title: "Borrow Books While You Sip Coffee at Kolkata’s Cosiest Cafés",
       description:
-        "Discover our latest collection of books fresh off the press. From thrilling mysteries to heartwarming romances, find your next favorite read among our new arrivals this week.",
+        "Join The Bookshelves — India’s first café-based book borrowing service. For just ₹49, read unlimited books in your favourite coffee spots.",
       images: ["/book1.png", "/book2.png", "/book3.png"],
-      buttonText: "Browse New Releases",
+      buttonText: "Lets Get Started",
     },
     {
       id: 2,
-      title: "Must Reads",
+      title: "Explore Cafes near you",
       description:
-        "Immerse yourself in timeless classics and contemporary masterpieces. Our curated selection of must-read books features unforgettable stories that have captured readers' hearts.",
+        "Whether you're in Salt Lake, Gariahat, or Park Street, a shelf full of stories is just around the corner.",
       images: ["/book1.png", "/book2.png"],
-      buttonText: "Explore Classics",
+      buttonText: "Discover Now",
     },
     {
       id: 3,
-      title: "Visit Blue Tokai",
+      title: "Read the book your friends are talking about",
       description:
-        "Experience the perfect blend of books and artisanal coffee at Blue Tokai. Our newest partner café offers a cozy atmosphere for your reading pleasure with expertly crafted beverages.",
-      images: ["/bluetokai-logo.png"],
-      buttonText: "Find Location",
+        "Genres range from thrillers to business to romance.Choose your favourite, sip your coffee, and enjoy real reading time.",
+      images: ["/book1.png", "/book2.png", "/book3.png"],
+      buttonText: "Read Now",
     },
   ];
 
@@ -180,10 +180,22 @@ function TheBookShelves() {
         )}
 
         {/* Books Section */}
-        <section id="Book Section" className="mb-12">
-          <h2 className="text-2xl sm:text-3xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
-            Read something new!
+        <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
+         Find Bookshelves Near You!
+        </h2>
+        <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-4 sm:mb-6 translate-y-[2vw]">
+          Your next favorite cafe and story all in one place. 
+        </p>
+        <section id="Book Section" className="mb-12 translate-y-[5vw]">
+          <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
+          New Books Every Month!
           </h2>
+          <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
+          From thrillers to romance, business to true crime.
+          </p>
+          <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
+          We have something for all your reading needs
+          </p>
           {loadingBooks ? (
             <div className="text-gray-600">Loading books...</div>
           ) : books.length === 0 ? (
@@ -198,7 +210,7 @@ function TheBookShelves() {
               <div className="flex justify-center mt-6">
                 <Link href="/discover">
                   <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
-                    Discover the rest
+                    Explore he Bookshelf
                   </button>
                 </Link>
               </div>
@@ -207,7 +219,7 @@ function TheBookShelves() {
         </section>
 
         {/* Cafes Section */}
-        <section id="Cafe Section" className="mb-12">
+        <section id="Cafe Section" className="mb-12 translate-y-[5vw]" >
           <h2 className="text-2xl sm:text-3xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             Find a new Cafe!
           </h2>
@@ -223,7 +235,7 @@ function TheBookShelves() {
               <div className="flex justify-center mt-6">
                 <Link href="/discover">
                   <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
-                    Discover the rest
+                    View All Cafes
                   </button>
                 </Link>
               </div>
@@ -243,6 +255,7 @@ function TheBookShelves() {
           </Link>
         </div>
       )}
+      <section  id="Cafe Section" className="mb-12 translate-y-[5vw]"> </section>
       {!searchQuery && <Footer />}
     </div>
   );

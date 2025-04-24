@@ -32,7 +32,7 @@ const Carousel = ({ title, description, buttonText, images }) => {
         </p>
         <Link
           href={
-            buttonText === "Browse New Releases" ? "/discover" :
+            buttonText === "Lets Get Started" ? "/auth/signup" : //For the logged in user lets go to discover
             buttonText === "Explore Classics" ? "/discover" :
             buttonText === "Find Location" ? "/cafes" : "#"
           }
