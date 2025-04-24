@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import ThemeToggle from "../../../components/ThemeToggle";
-import { auth, googleProvider } from "../../../lib/firebase";
+import { auth, googleProvider, createUserWithEmailAndPassword } from "../../../lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 
 function MainComponent() {
@@ -18,6 +18,8 @@ function MainComponent() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [emailPhoneNumber, setEmailPhoneNumber] = useState("");
+  const [emailTempData, setEmailTempData] = useState(null);
   const [googlePhoneNumber, setGooglePhoneNumber] = useState("");
   const [googleTempData, setGoogleTempData] = useState(null);
 
@@ -29,8 +31,8 @@ function MainComponent() {
   };
 
   const validateForm = () => {
-    if (!formData.name || !formData.phone_number || !formData.email || !formData.password || !formData.confirmPassword) {
-      return "Please fill in all fields";
+    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
+      return "Please fill in all required fields";
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       return "Invalid email format";
@@ -43,9 +45,6 @@ function MainComponent() {
     }
     if (formData.password !== formData.confirmPassword) {
       return "Passwords do not match";
-    }
-    if (!/^\d{10}$/.test(formData.phone_number)) {
-      return "Phone number must be 10 digits";
     }
     return null;
   };
@@ -63,22 +62,40 @@ function MainComponent() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
+      // Create user with Firebase
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const idToken = await userCredential.user.getIdToken();
+
+      // Call backend to check if phone number is required
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/email-signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          idToken,
           name: formData.name,
-          phone_number: formData.phone_number,
-          email: formData.email,
-          password: formData.password,
+          email: formData.email.toLowerCase(),
         }),
       });
       const data = await res.json();
+      console.log('Email signup response:', data); // Debug log
       if (!res.ok) throw new Error(data.message || 'Registration failed');
-      localStorage.setItem('token', data.token);
-      window.location.href = '/';
+
+      // Check if phone number is required
+      if (data.message.includes("Requires phone number")) {
+        setEmailTempData({
+          tempToken: data.tempToken,
+          name: formData.name,
+          email: formData.email.toLowerCase(),
+        });
+        setShowPhoneModal(true);
+      } else {
+        // Existing user or no phone number required
+        localStorage.setItem('token', data.token);
+        window.location.href = '/';
+      }
     } catch (err) {
-      setError(err.message);
+      console.error('Email signup error:', err.message); // Debug log
+      setError(err.message || 'Failed to sign up');
       setLoading(false);
     }
   };
@@ -99,6 +116,7 @@ function MainComponent() {
         }),
       });
       const data = await res.json();
+      console.log('Google Sign-In response:', data); // Debug log
       if (!res.ok) throw new Error(data.message || 'Google Sign-In failed');
       
       // Check if user needs to provide phone number
@@ -112,6 +130,7 @@ function MainComponent() {
         window.location.href = '/';
       }
     } catch (err) {
+      console.error('Google Sign-In error:', err.message); // Debug log
       setError(err.message);
       setLoading(false);
     }
@@ -121,24 +140,29 @@ function MainComponent() {
     e.preventDefault();
     setError(null);
 
+    const phoneNumber = emailTempData ? emailPhoneNumber : googlePhoneNumber;
+    const tempData = emailTempData || googleTempData;
+    const endpoint = emailTempData ? '/auth/email-signup/complete' : '/auth/google/complete';
+
     // Validate phone number
-    if (!/^\d{10}$/.test(googlePhoneNumber)) {
+    if (!/^\d{10}$/.test(phoneNumber)) {
       setError("Phone number must be 10 digits");
       return;
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google/complete`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tempToken: googleTempData.tempToken,
-          phone_number: googlePhoneNumber,
+          tempToken: tempData.tempToken,
+          phone_number: phoneNumber,
         }),
       });
       const data = await res.json();
+      console.log('Phone submission response:', data); // Debug log
       if (!res.ok) throw new Error(data.message || 'Failed to complete registration');
       
       // Registration completed successfully, store token and redirect
@@ -146,6 +170,7 @@ function MainComponent() {
       setShowPhoneModal(false);
       window.location.href = '/';
     } catch (err) {
+      console.error('Phone submission error:', err.message); // Debug log
       setError(err.message);
     }
   };
@@ -172,15 +197,6 @@ function MainComponent() {
                 type="text"
                 name="name"
                 placeholder="Full Name"
-                onChange={handleInputChange}
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
-              />
-            </div>
-            <div>
-              <input
-                type="tel"
-                name="phone_number"
-                placeholder="Phone Number"
                 onChange={handleInputChange}
                 className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
               />
@@ -259,7 +275,7 @@ function MainComponent() {
           </div>
           <p className="mt-8 text-center text-sm text-text-light dark:text-text-dark">
             Already have an account?{" "}
-            <Link href="/auth/signin" className="font-medium text-primary-light dark:text-primary-dark hover:text-primary-light dark:hover:text-primary-dark">
+            <Link href="/auth/signin" className="font-medium text-primary-light dark:text-primary-dark hover:text-primary-dark">
               Sign in
             </Link>
           </p>
@@ -289,8 +305,8 @@ function MainComponent() {
             <form onSubmit={handlePhoneSubmit}>
               <input
                 type="tel"
-                value={googlePhoneNumber}
-                onChange={(e) => setGooglePhoneNumber(e.target.value)}
+                value={emailTempData ? emailPhoneNumber : googlePhoneNumber}
+                onChange={(e) => (emailTempData ? setEmailPhoneNumber(e.target.value) : setGooglePhoneNumber(e.target.value))}
                 placeholder="Phone Number (10 digits)"
                 className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors mb-4"
               />
