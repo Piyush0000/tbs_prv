@@ -23,6 +23,74 @@ function MainComponent() {
   const router = useRouter();
 
   useEffect(() => {
+    if (user && !loading) {
+      console.log("User object in useEffect:", user);
+      console.log("User book_id:", user?.book_id);
+      setEmail(user.email || "");
+      setPhone(user.phone_number || "");
+      fetchTransactions();
+      fetchCurrentBook();
+    }
+  }, [user, loading]);
+
+  const fetchTransactions = async () => {
+    setLoadingTransactions(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found. Please sign in.");
+      }
+
+      if (!user || !user.user_id) {
+        throw new Error("User data not available. Please sign in again.");
+      }
+
+      console.log("Fetching transactions for user:", user);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      console.log("Transactions API response status:", res.status);
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Unauthorized: Please sign in again.");
+        }
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to fetch transactions");
+      }
+
+      const transactions = await res.json();
+      console.log("Transactions received:", transactions);
+      const userTransactions = transactions.filter(
+        (t) => t.user_id?.user_id === user.user_id
+      );
+
+      const previous = userTransactions.filter((t) =>
+        ["picked_up", "dropped_off"].includes(t.status)
+      );
+      const pending = userTransactions.filter((t) =>
+        ["pickup_pending", "dropoff_pending"].includes(t.status)
+      );
+
+      console.log("Pending Transactions:", pending);
+
+      setPreviousTransactions(previous);
+      setPendingTransactions(pending);
+    } catch (err) {
+      console.error("Error fetching transactions:", err.message);
+      setError(err.message);
+      if (err.message.includes("Unauthorized") || err.message.includes("User data not available")) {
+        localStorage.removeItem("token");
+        window.location.href = "/auth/signin";
+      }
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  useEffect(() => {
     if (user) {
       console.log("User object in useEffect:", user);
       console.log("User book_id:", user?.book_id);
@@ -67,55 +135,7 @@ function MainComponent() {
     }
   };
 
-  const fetchTransactions = async () => {
-    setLoadingTransactions(true);
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("No authentication token found. Please sign in.");
-      }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          throw new Error("Unauthorized: Please sign in again.");
-        }
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to fetch transactions");
-      }
-
-      const transactions = await res.json();
-      const userTransactions = transactions.filter(
-        (t) => t.user_id.user_id === user.user_id
-      );
-
-      const previous = userTransactions.filter((t) =>
-        ["picked_up", "dropped_off"].includes(t.status)
-      );
-      const pending = userTransactions.filter((t) =>
-        ["pickup_pending", "dropoff_pending"].includes(t.status)
-      );
-
-      console.log("Pending Transactions:", pending);
-
-      setPreviousTransactions(previous);
-      setPendingTransactions(pending);
-    } catch (err) {
-      console.error("Error fetching transactions:", err.message);
-      setError(err.message);
-      if (err.message.includes("Unauthorized")) {
-        localStorage.removeItem("token");
-        window.location.href = "/auth/signin";
-      }
-    } finally {
-      setLoadingTransactions(false);
-    }
-  };
 
   const fetchCurrentBook = async () => {
     setLoadingBook(true);

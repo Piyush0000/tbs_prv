@@ -266,10 +266,10 @@ function CafeDashboard() {
   const handleScanned = async ({ firstCode, secondCode }) => {
     if (isProcessingScan.current) return; // Prevent re-entry
     isProcessingScan.current = true;
-
+  
     setScannedCodes({ first: firstCode, second: secondCode });
     let token = localStorage.getItem("token");
-
+  
     const parts = firstCode.split(".");
     if (parts.length !== 2) {
       setScannerMessage("Invalid format for first QR code.");
@@ -278,7 +278,7 @@ function CafeDashboard() {
     }
     const scannedTransactionId = parts[0];
     const scannedUserId = parts[1];
-
+  
     const pendingTx = transactions.find(
       (tx) => tx.transaction_id === scannedTransactionId && ["pickup_pending", "dropoff_pending"].includes(tx.status)
     );
@@ -287,24 +287,71 @@ function CafeDashboard() {
       isProcessingScan.current = false;
       return;
     }
-
+  
     try {
       if (pendingTx.status === "pickup_pending") {
         const bookIdToVerify = pendingTx.book_id.book_id || pendingTx.book_id;
         const scannedBookPrefix = extractAlpha(secondCode);
         const expectedBookPrefix = extractAlpha(bookIdToVerify);
-
+  
+        // Check if the prefixes match
         if (scannedBookPrefix !== expectedBookPrefix) {
           setScannerMessage("Scanned book QR code prefix does not match transaction.");
           isProcessingScan.current = false;
           return;
         }
-
-        const bookRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/book/${secondCode}`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+  
+        // Update the transaction's book_id with the scanned book_id
+        const updateRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/transactions/${scannedTransactionId}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ book_id: secondCode }),
+          }
+        );
+  
+        if (updateRes.status === 401) {
+          token = await refreshToken();
+          if (!token) {
+            setError("Failed to refresh token. Please log in again.");
+            window.location.href = "/auth/signin";
+            isProcessingScan.current = false;
+            return;
+          }
+          localStorage.setItem("token", token);
+          const retryUpdateRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/transactions/${scannedTransactionId}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ book_id: secondCode }),
+            }
+          );
+          if (!retryUpdateRes.ok) {
+            const errorData = await retryUpdateRes.json();
+            throw new Error(`Failed to update book ID after token refresh: ${errorData.error || retryUpdateRes.statusText}`);
+          }
+        } else if (!updateRes.ok) {
+          const errorData = await updateRes.json();
+          throw new Error(`Failed to update book ID: ${errorData.error || updateRes.statusText}`);
+        }
+  
+        // Verify the book QR code
+        const bookRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/book/${secondCode}`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+  
         if (bookRes.status === 401) {
           token = await refreshToken();
           if (!token) {
@@ -314,22 +361,31 @@ function CafeDashboard() {
             return;
           }
           localStorage.setItem("token", token);
-          const retryBookRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/book/${secondCode}`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!retryBookRes.ok) throw new Error("Failed to verify book QR after token refresh");
-          await retryBookRes.json();
+          const retryBookRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/book/${secondCode}`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+          if (!retryBookRes.ok) {
+            const errorData = await retryBookRes.json();
+            throw new Error(`Failed to verify book QR after token refresh: ${errorData.error || retryBookRes.statusText}`);
+          }
         } else if (!bookRes.ok) {
           const errorData = await bookRes.json();
           throw new Error(`Failed to verify book QR: ${errorData.error || bookRes.statusText}`);
         }
-
-        const approveRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/user/${scannedUserId}`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+  
+        // Approve the pickup
+        const approveRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/user/${scannedUserId}`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+  
         if (approveRes.status === 401) {
           token = await refreshToken();
           if (!token) {
@@ -339,16 +395,22 @@ function CafeDashboard() {
             return;
           }
           localStorage.setItem("token", token);
-          const retryApproveRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/user/${scannedUserId}`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!retryApproveRes.ok) throw new Error("Failed to approve pickup after token refresh");
+          const retryApproveRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/transactions/scan/user/${scannedUserId}`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+          if (!retryApproveRes.ok) {
+            const errorData = await retryApproveRes.json();
+            throw new Error(`Failed to approve pickup after token refresh: ${errorData.error || retryApproveRes.statusText}`);
+          }
           const approveData = await retryApproveRes.json();
           setTransactions((prev) =>
             prev.map((tx) =>
               tx.transaction_id === scannedTransactionId
-                ? { ...tx, status: "picked_up", processed_at: new Date() }
+                ? { ...tx, status: "picked_up", book_id: secondCode, processed_at: new Date() }
                 : tx
             )
           );
@@ -361,7 +423,7 @@ function CafeDashboard() {
           setTransactions((prev) =>
             prev.map((tx) =>
               tx.transaction_id === scannedTransactionId
-                ? { ...tx, status: "picked_up", processed_at: new Date() }
+                ? { ...tx, status: "picked_up", book_id: secondCode, processed_at: new Date() }
                 : tx
             )
           );
@@ -375,12 +437,15 @@ function CafeDashboard() {
           isProcessingScan.current = false;
           return;
         }
-
-        const completeRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/complete/${scannedTransactionId}`, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+  
+        const completeRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/transactions/complete/${scannedTransactionId}`,
+          {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+  
         if (completeRes.status === 401) {
           token = await refreshToken();
           if (!token) {
@@ -390,10 +455,13 @@ function CafeDashboard() {
             return;
           }
           localStorage.setItem("token", token);
-          const retryCompleteRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions/complete/${scannedTransactionId}`, {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const retryCompleteRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/transactions/complete/${scannedTransactionId}`,
+            {
+              method: "PUT",
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
           if (!retryCompleteRes.ok) {
             const errorData = await retryCompleteRes.json();
             throw new Error(`Failed to complete drop-off after token refresh: ${errorData.error || retryCompleteRes.statusText}`);
@@ -422,7 +490,7 @@ function CafeDashboard() {
           setScannerMessage("Drop-off transaction completed!");
         }
       }
-
+  
       await fetchTransactions(); // Refresh transactions after successful approval
     } catch (err) {
       console.error("Error in handleScanned:", err.message);

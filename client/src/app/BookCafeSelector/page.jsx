@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CafeCard } from "../../components/cafe";
 import { useAuth } from "../Hooks/useAuth";
 
@@ -130,10 +130,12 @@ function BookCafeSelectorContent() {
         });
         if (!retryRes.ok) throw new Error("Failed to create transaction");
         alert("Book requested successfully!");
+        router.push("/profile"); // Redirect to profile page
       } else if (!res.ok) {
         throw new Error("Failed to create transaction");
       } else {
         alert("Book requested successfully!");
+        router.push("/profile"); // Redirect to profile page
       }
     } catch (err) {
       setError(err.message);
