@@ -419,34 +419,13 @@ function MainComponent() {
                 className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
                 placeholder="Enter your email"
               />
-              <div className="flex space-x-2 justify-end">
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full font-button hover:bg-primary-light dark:hover:bg-primary-dark"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEmailForm(false)}
-                  className="px-4 py-2 border border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
-                >
-                  Cancel
-                </button>
-              </div>
+            
             </form>
           ) : (
             <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
               <div className="font-body text-text-light dark:text-text-dark">
                 {user.email}
               </div>
-              <button
-                disabled
-                onClick={() => setShowEmailForm(true)}
-                className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
-              >
-                Update Email
-              </button>
             </div>
           )}
           {showPhoneForm ? (
@@ -469,7 +448,7 @@ function MainComponent() {
                 <button
                   type="button"
                   onClick={() => setShowPhoneForm(false)}
-                  className="px-4 py-2 border border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
+                  className="px-4 py-2 border text-text-light dark:text-text-dark border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
                 >
                   Cancel
                 </button>
@@ -708,7 +687,7 @@ function MainComponent() {
           </button>
           <a
             href="/auth/logout"
-            className="px-6 py-3 text-warning-light dark:text-warning-dark border border-warning-light dark:border-warning-dark rounded-full hover:bg-warning-light dark:hover:bg-warning-dark transition-colors font-button"
+            className="px-6 py-3 text-text-light dark:text-text-dark border border-warning-light dark:border-warning-dark rounded-full hover:bg-warning-light dark:hover:bg-warning-dark transition-colors font-button"
           >
             Log Out
           </a>

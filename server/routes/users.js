@@ -340,6 +340,11 @@ router.delete('/:user_id', authMiddleware, adminMiddleware, async (req, res) => 
 // POST /create-deposit: Create a Razorpay order for deposit payment
 router.post('/create-deposit', authMiddleware, async (req, res) => {
     try {
+        const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+
         const { amount } = req.body;
         if (amount !== 299) {
             return res.status(400).json({ error: 'Invalid deposit amount. Expected ₹299' });
