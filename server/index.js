@@ -20,6 +20,7 @@ require('dotenv').config();
 console.log('Environment Variables:');
 console.log('RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID);
 console.log('RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET);
+console.log('RAZORPAY_WEBHOOK_SECRET:', process.env.RAZORPAY_WEBHOOK_SECRET);
 console.log('JWT_SECRET:', process.env.JWT_SECRET);
 console.log('MONGODB_URI:', process.env.MONGODB_URI);
 console.log('FIREBASE_SERVICE_ACCOUNT_KEY:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
@@ -33,8 +34,8 @@ if (!process.env.MONGODB_URI) {
     console.error('FATAL ERROR: MONGODB_URI is not defined in environment variables');
     process.exit(1);
 }
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    console.error('FATAL ERROR: Razorpay credentials (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET) are not defined in environment variables');
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET || !process.env.RAZORPAY_WEBHOOK_SECRET) {
+    console.error('FATAL ERROR: Razorpay credentials (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET) are not defined in environment variables');
     process.exit(1);
 }
 if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {

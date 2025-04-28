@@ -346,4 +346,61 @@ router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
   }
 });
 
+// DELETE /api/transactions/cancel/:transaction_id - Cancel a pickup request
+router.delete('/cancel/:transaction_id', authMiddleware, async (req, res) => {
+  const { transaction_id } = req.params;
+
+  try {
+    const transaction = await Transaction.findOne({ transaction_id, status: 'pickup_pending' });
+    if (!transaction) {
+      logger.warn(`No pending pickup transaction found for transaction_id: ${transaction_id}`);
+      return res.status(404).json({ error: 'No pending pickup transaction found' });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      logger.warn(`User not found for cancelling transaction: ${req.userId}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (String(transaction.user_id) !== String(user._id)) {
+      logger.warn(`Unauthorized attempt to cancel transaction: ${transaction_id} by user: ${user.user_id}`);
+      return res.status(403).json({ error: 'Unauthorized to cancel this transaction' });
+    }
+
+    const book = await Book.findById(transaction.book_id);
+    if (!book) {
+      logger.warn(`Book not found for cancelling transaction: ${transaction.book_id}`);
+      return res.status(404).json({ error: 'Book not found' });
+    }
+
+    const cafe = await Cafe.findById(transaction.cafe_id);
+    if (!cafe) {
+      logger.warn(`Cafe not found for cancelling transaction: ${transaction.cafe_id}`);
+      return res.status(404).json({ error: 'Cafe not found' });
+    }
+
+    // Delete the transaction
+    await transaction.deleteOne();
+
+    // Update book: make it available, ensure keeper_id remains cafe's cafe_id
+    book.available = true;
+    book.keeper_id = cafe.cafe_id;
+    book.updatedAt = new Date();
+    await book.save();
+
+    // Clear user's book_id
+    user.book_id = null;
+    user.updatedAt = new Date();
+    await user.save();
+
+    logger.info(`Pickup request cancelled successfully: ${transaction_id}`);
+    res.status(200).json({ message: 'Pickup request cancelled successfully' });
+  } catch (err) {
+    logger.error(`Error cancelling pickup request: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 module.exports = router;

@@ -1,9 +1,13 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuth } from "../app/Hooks/useAuth";
 
 const Carousel = ({ title, description, buttonText, images }) => {
   const [isMobile, setIsMobile] = useState(false);
+  const { isLoggedIn } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -21,6 +25,46 @@ const Carousel = ({ title, description, buttonText, images }) => {
         : (maxRightShift / images.length) * 1.7;
   }
 
+  const handleLinkClick = (e, href) => {
+    console.log(`Link clicked: href=${href}, isLoggedIn=${isLoggedIn}`);
+    // Prevent default only for anchor links on the same page
+    if (href.startsWith("/discover#") && window.location.pathname === "/discover") {
+      e.preventDefault();
+      const sectionId = href.split("#")[1]; // e.g., "books" or "cafes"
+      const element = document.getElementById(sectionId);
+      if (element) {
+        const headerHeight = document.querySelector("header")?.offsetHeight || 80;
+        const yOffset = -headerHeight;
+        const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: "smooth" });
+        // Update URL without reloading
+        window.history.pushState(null, "", href);
+      } else {
+        console.warn(`Section with id="${sectionId}" not found`);
+        router.push(href); // Fallback to full navigation
+      }
+    } else {
+      // Let Link handle navigation for different pages
+      router.push(href);
+    }
+  };
+
+  const getLinkHref = () => {
+    if (!isLoggedIn) return "/auth/signup";
+    switch (buttonText) {
+      case "Lets Get Started":
+        return "/discover";
+      case "Explore Classics":
+        return "/discover#books";
+      case "Find Location":
+        return "/discover#cafes";
+      default:
+        return "#";
+    }
+  };
+
+  const href = getLinkHref();
+
   return (
     <div className="flex flex-col md:flex-row items-center justify-between">
       <div className="w-full md:w-[70%] pr-0 md:pr-32 mb-2 md:mb-0 relative z-10">
@@ -31,11 +75,8 @@ const Carousel = ({ title, description, buttonText, images }) => {
           {description}
         </p>
         <Link
-          href={
-            buttonText === "Browse New Releases" ? "/discover" :
-            buttonText === "Explore Classics" ? "/discover" :
-            buttonText === "Find Location" ? "/cafes" : "#"
-          }
+          href={href}
+          onClick={(e) => handleLinkClick(e, href)}
           className="inline-block bg-primary-light dark:bg-primary-dark text-background-light dark:text-background-dark font-button font-bold px-6 py-2 rounded-md hover:bg-secondary-light dark:hover:bg-secondary-dark transition-colors"
         >
           {buttonText}

@@ -244,10 +244,12 @@ function BookCafeSelectorContent() {
         });
         if (!retryRes.ok) throw new Error("Failed to create transaction");
         alert("Book requested successfully!");
+        router.push("/profile"); // Redirect to profile page
       } else if (!res.ok) {
         throw new Error("Failed to create transaction");
       } else {
         alert("Book requested successfully!");
+        router.push("/profile"); // Redirect to profile page
       }
     } catch (err) {
       setError(err.message);
