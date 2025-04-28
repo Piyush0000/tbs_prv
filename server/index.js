@@ -14,7 +14,7 @@ const clientPortalRoutes = require('./routes/clientPortal');
 const adminPortalRoutes = require('./routes/adminPortal');
 
 // Load environment variables from .env file
-dotenv.config();
+require('dotenv').config();
 
 // Debug: Log environment variables to verify they are loaded
 console.log('Environment Variables:');

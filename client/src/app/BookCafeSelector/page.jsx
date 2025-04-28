@@ -1,6 +1,6 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CafeCard } from "../../components/cafe";
 import { useAuth } from "../Hooks/useAuth";
 
@@ -17,6 +17,47 @@ function BookCafeSelectorContent() {
   const [transactionLoading, setTransactionLoading] = useState(false);
   const [showConfirmPopup, setShowConfirmPopup] = useState(false);
   const [selectedCafe, setSelectedCafe] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [showTransactionErrorPopup, setShowTransactionErrorPopup] = useState(false);
+  const [transactionErrorMessage, setTransactionErrorMessage] = useState("");
+
+  // Fetch user profile to check subscription and book status
+  const fetchUserProfile = async () => {
+    setLoadingUser(true);
+    try {
+      let token = localStorage.getItem("token");
+      if (!token) {
+        window.location.href = "/auth/signin";
+        return;
+      }
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        token = await refreshToken();
+        if (!token) throw new Error("Failed to refresh token");
+        localStorage.setItem("token", token);
+        const retryRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!retryRes.ok) throw new Error("Failed to fetch user profile");
+        const data = await retryRes.json();
+        setUserData(data);
+      } else if (!res.ok) {
+        throw new Error("Failed to fetch user profile");
+      } else {
+        const data = await res.json();
+        setUserData(data);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingUser(false);
+    }
+  };
 
   // Fetch book details (to get the name)
   const fetchBookDetails = async (bookId) => {
@@ -88,6 +129,79 @@ function BookCafeSelectorContent() {
     }
   };
 
+  // Fetch user transactions to check for pending transactions
+  const fetchUserTransactions = async () => {
+    try {
+      let token = localStorage.getItem("token");
+      if (!token) {
+        window.location.href = "/auth/signin";
+        return;
+      }
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        token = await refreshToken();
+        if (!token) throw new Error("Failed to refresh token");
+        localStorage.setItem("token", token);
+        const retryRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!retryRes.ok) throw new Error("Failed to fetch transactions");
+        const data = await retryRes.json();
+        return data;
+      } else if (!res.ok) {
+        throw new Error("Failed to fetch transactions");
+      } else {
+        const data = await res.json();
+        return data;
+      }
+    } catch (err) {
+      setError(err.message);
+      return [];
+    }
+  };
+
+  // Check subscription and transaction/book status
+  const checkEligibility = async () => {
+    await fetchUserProfile();
+    if (!userData) return;
+
+    // Check subscription status
+    const currentDate = new Date();
+    if (
+      userData.subscription_type === "basic" ||
+      new Date(userData.subscription_validity) < currentDate
+    ) {
+      router.push("/Subscription");
+      return;
+    }
+
+    // Check for pending transactions or book
+    const transactions = await fetchUserTransactions();
+    const pendingTransactions = transactions.filter(
+      (t) => t.status === "pickup_pending" || t.status === "dropoff_pending"
+    );
+
+    if (pendingTransactions.length > 0) {
+      setTransactionErrorMessage(
+        "You have a pending transaction. Please complete it before requesting another book."
+      );
+      setShowTransactionErrorPopup(true);
+      return;
+    }
+
+    if (userData.book_id) {
+      setTransactionErrorMessage(
+        "You currently have a book. Please drop it off before requesting another book."
+      );
+      setShowTransactionErrorPopup(true);
+      return;
+    }
+  };
+
   // Create a transaction
   const requestBook = async (cafeId) => {
     if (transactionLoading) return;
@@ -144,9 +258,13 @@ function BookCafeSelectorContent() {
   };
 
   // Handle "Book at this Cafe" button click
-  const handleBookAtCafe = (cafe) => {
-    setSelectedCafe(cafe);
-    setShowConfirmPopup(true);
+  const handleBookAtCafe = async (cafe) => {
+    // Check eligibility before proceeding
+    await checkEligibility();
+    if (!showTransactionErrorPopup && userData && userData.subscription_type !== "basic") {
+      setSelectedCafe(cafe);
+      setShowConfirmPopup(true);
+    }
   };
 
   // Load book ID from URL and fetch cafes
@@ -157,7 +275,16 @@ function BookCafeSelectorContent() {
       fetchBookDetails(bookId);
       fetchCafes(bookId);
     }
+    fetchUserProfile(); // Fetch user profile on mount
   }, [searchParams]);
+
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-600">Loading user data...</div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -230,6 +357,24 @@ function BookCafeSelectorContent() {
                   disabled={transactionLoading}
                 >
                   {transactionLoading ? "Confirming..." : "Confirm Transaction"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transaction Error Popup */}
+        {showTransactionErrorPopup && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-lg">
+              <h2 className="text-xl font-bold mb-4">Unable to Request Book</h2>
+              <p className="mb-4">{transactionErrorMessage}</p>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowTransactionErrorPopup(false)}
+                  className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+                >
+                  Close
                 </button>
               </div>
             </div>

@@ -11,23 +11,23 @@ const jwt = require('jsonwebtoken');
 // Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  console.log('Authorization header:', authHeader);
+  logger.info('Authorization header:', authHeader);
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('No token provided or invalid format');
+    logger.warn('No token provided or invalid format');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const token = authHeader.split(' ')[1];
-  console.log('Token extracted:', token);
+  logger.info('Token extracted:', token);
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Token decoded:', decoded);
+    logger.info('Token decoded:', decoded);
     req.userId = decoded.id;
     next();
   } catch (err) {
-    console.error('Token verification failed:', err.message);
+    logger.error('Token verification failed:', err.message);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -80,6 +80,43 @@ router.post(
     const { book_id, cafe_id } = req.body;
 
     try {
+      // Find the user by userId (from JWT) and get their ObjectId
+      const user = await User.findById(req.userId);
+      if (!user) {
+        logger.warn(`User not found: ${req.userId}`);
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Check subscription status
+      const currentDate = new Date();
+      if (
+        user.subscription_type === 'basic' ||
+        new Date(user.subscription_validity) < currentDate
+      ) {
+        logger.warn(`Active subscription required for user: ${user.user_id}`);
+        return res.status(403).json({ error: 'Active subscription required' });
+      }
+
+      // Check for pending transactions
+      const pendingTransactions = await Transaction.find({
+        user_id: user._id,
+        status: { $in: ['pickup_pending', 'dropoff_pending'] },
+      });
+      if (pendingTransactions.length > 0) {
+        logger.warn(`Pending transaction exists for user: ${user.user_id}`);
+        return res.status(400).json({
+          error: 'You have a pending transaction. Please complete it before requesting another book.',
+        });
+      }
+
+      // Check if user has a book
+      if (user.book_id) {
+        logger.warn(`User already has a book: ${user.book_id}, user: ${user.user_id}`);
+        return res.status(400).json({
+          error: 'You currently have a book. Please drop it off before requesting another book.',
+        });
+      }
+
       // Find the book by book_id and get its ObjectId
       const book = await Book.findOne({ book_id });
       if (!book) {
@@ -98,19 +135,6 @@ router.post(
         return res.status(404).json({ error: 'Cafe not found' });
       }
 
-      // Find the user by userId (from JWT) and get their ObjectId
-      const user = await User.findById(req.userId);
-      if (!user) {
-        logger.warn(`User not found: ${req.userId}`);
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      // Check subscription limit for basic users
-      if (user.book_id && user.subscription_type === 'basic') {
-        logger.warn(`Subscription limit exceeded for user: ${user.user_id}`);
-        return res.status(400).json({ error: 'Basic subscription allows only one book at a time' });
-      }
-
       // Create the transaction
       const transactionData = {
         book_id: book._id,
@@ -119,46 +143,18 @@ router.post(
         status: 'pickup_pending',
       };
 
-      // Fallback: Generate transaction_id if not set by the pre-save hook
-      if (!transactionData.transaction_id) {
-        let isUnique = false;
-        let attempts = 0;
-        const maxAttempts = 5;
-
-        while (!isUnique && attempts < maxAttempts) {
-          const timestamp = Date.now();
-          const randomStr = Math.random().toString(36).substring(2, 8);
-          const newTransactionId = `TXN_${timestamp}_${randomStr}`;
-
-          console.log(`Fallback - Attempt ${attempts + 1}: Checking uniqueness of transaction_id: ${newTransactionId}`);
-          const existingTransaction = await Transaction.findOne({ transaction_id: newTransactionId });
-          if (!existingTransaction) {
-            transactionData.transaction_id = newTransactionId;
-            isUnique = true;
-          }
-          attempts++;
-        }
-
-        if (!isUnique) {
-          throw new Error('Failed to generate a unique transaction_id after multiple attempts');
-        }
-        console.log('Fallback - Generated transaction_id:', transactionData.transaction_id);
-      }
-
       const transaction = new Transaction(transactionData);
-      console.log('Transaction before save:', transaction);
-
       await transaction.save();
       logger.info(`Transaction created successfully: ${transaction.transaction_id} for user: ${user.user_id}`);
 
       // Update book availability
       book.available = false;
-      book.updatedAt = Date.now();
+      book.updatedAt = new Date();
       await book.save();
 
       // Update user to track the book they have
       user.book_id = book.book_id;
-      user.updatedAt = Date.now();
+      user.updatedAt = new Date();
       await user.save();
 
       res.status(201).json({ message: 'Pickup request created successfully', transaction });
@@ -168,82 +164,6 @@ router.post(
     }
   }
 );
-/*
-// POST /api/transactions/scan/book/:book_id - Verify book QR code
-router.post('/scan/book/:book_id', authMiddleware, async (req, res) => {
-  const { book_id } = req.params;
-
-  try {
-    const book = await Book.findOne({ book_id });
-    if (!book) {
-      logger.warn(`Book not found during scan: ${book_id}`);
-      return res.status(404).json({ error: 'Book not found' });
-    }*/
-    /*if (!book.available) {
-      logger.warn(`Book unavailable during scan: ${book_id}`);
-      return res.status(400).json({ error: 'Book is currently unavailable' });
-    }*/
-/*
-    const transaction = await Transaction.findOne({ book_id: book._id, status: 'pickup_pending' });
-    if (!transaction) {
-      logger.warn(`No pending transaction for book: ${book_id}`);
-      return res.status(404).json({ error: 'No pending transaction found for this book' });
-    }
-
-    logger.info(`Book QR code verified successfully: ${book_id}, transaction: ${transaction.transaction_id}`);
-    res.status(200).json({ message: 'Book verified successfully', transaction_id: transaction.transaction_id });
-  } catch (err) {
-    logger.error(`Error scanning book QR code: ${err.message}`);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/transactions/scan/user/:user_id - Verify user QR code and approve transaction
-router.post('/scan/user/:user_id', authMiddleware, async (req, res) => {
-  const { user_id } = req.params;
-
-  try {
-    const user = await User.findOne({ user_id });
-    if (!user) {
-      logger.warn(`User not found during scan: ${user_id}`);
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const transaction = await Transaction.findOne({ user_id: user._id, status: 'pickup_pending' });
-    if (!transaction) {
-      logger.warn(`No pending transaction for user: ${user_id}`);
-      return res.status(404).json({ error: 'No pending transaction found for this user' });
-    }
-
-    const book = await Book.findById(transaction.book_id);
-    //if (!book || !book.available) 
-    if (!book ){
-      logger.warn(`Book no longer available for transaction: ${transaction.book_id}`);
-      return res.status(400).json({ error: 'Book is no longer available' });
-    }
-
-    transaction.status = 'picked_up';
-    transaction.processed_at = new Date();
-    await transaction.save();
-
-    book.available = false;
-    book.keeper_id = user.user_id;
-    book.updatedAt = Date.now();
-    await book.save();
-
-    user.book_id = book.book_id;
-    user.updatedAt = Date.now();
-    await user.save();
-
-    logger.info(`Transaction approved successfully: ${transaction.transaction_id}, user: ${user_id}`);
-    res.status(200).json({ message: 'Transaction approved, book picked up successfully', transaction });
-  } catch (err) {
-    logger.error(`Error approving transaction: ${err.message}`);
-    res.status(500).json({ error: err.message });
-  }
-});
-*/
-// ... (other imports and middleware remain unchanged)
 
 // POST /api/transactions/scan/book/:book_id - Verify book QR code
 router.post('/scan/book/:book_id', authMiddleware, async (req, res) => {
@@ -320,11 +240,6 @@ router.post('/scan/user/:user_id', authMiddleware, async (req, res) => {
   }
 });
 
-// ... (other routes remain unchanged)
-
-module.exports = router;
-
-
 // PUT /api/transactions/drop-off/:book_id - Initiate drop-off process
 router.put('/drop-off/:book_id', authMiddleware, async (req, res) => {
   const { book_id } = req.params;
@@ -382,7 +297,7 @@ router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
   const { transaction_id } = req.params;
 
   try {
-    console.log(`Completing transaction with transaction_id: ${transaction_id}`);
+    logger.info(`Completing transaction with transaction_id: ${transaction_id}`);
     const transaction = await Transaction.findOne({ transaction_id, status: 'dropoff_pending' });
     if (!transaction) {
       logger.warn(`No pending drop-off transaction: ${transaction_id}`);

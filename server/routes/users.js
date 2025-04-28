@@ -3,9 +3,19 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const SubscriptionPayment = require('../models/SubscriptionPayment');
+const Transaction = require('../models/Transaction');
+const Book = require('../models/Book');
 const Razorpay = require('razorpay');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+
+
+require('dotenv').config();
+// Initialize Razorpay instance
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 // Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
@@ -295,12 +305,6 @@ router.delete('/:user_id', authMiddleware, adminMiddleware, async (req, res) => 
 // POST /api/users/create-subscription - Create a Razorpay order for subscription
 router.post('/create-subscription', authMiddleware, async (req, res) => {
     try {
-        // Initialize Razorpay instance inside the route handler
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET,
-        });
-
         const { tier, amount, isCodeApplied } = req.body;
         if (!['basic', 'standard', 'premium'].includes(tier)) {
             return res.status(400).json({ error: 'Invalid subscription tier' });
@@ -364,12 +368,6 @@ router.post('/create-subscription', authMiddleware, async (req, res) => {
 // POST /api/users/verify-subscription-payment - Verify Razorpay payment and update subscription
 router.post('/verify-subscription-payment', authMiddleware, async (req, res) => {
     try {
-        // Initialize Razorpay instance inside the route handler
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET,
-        });
-
         const { razorpay_order_id, razorpay_payment_id, razorpay_signature, tier, amount, isCodeApplied } = req.body;
 
         // Validate the request
@@ -449,38 +447,115 @@ router.post('/cancel-subscription', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.userId);
         if (!user) {
+            console.log('User not found for cancel-subscription:', req.userId);
             return res.status(404).json({ error: 'User not found' });
         }
 
         // Check if user has an active subscription
         if (!user.subscription_type || user.subscription_type === 'basic') {
+            console.log('No active subscription to cancel for user:', user.user_id);
             return res.status(400).json({ error: 'No active subscription to cancel' });
         }
 
         // Check if subscription is still valid
         const currentDate = new Date();
         if (user.subscription_validity < currentDate) {
+            console.log('Subscription already expired for user:', user.user_id);
             return res.status(400).json({ error: 'Subscription is already expired' });
+        }
+
+        // Check for dropoff_pending transactions
+        const dropoffPendingTransactions = await Transaction.find({
+            user_id: user._id,
+            status: 'dropoff_pending',
+        });
+        if (dropoffPendingTransactions.length > 0) {
+            console.log('User has dropoff_pending transactions:', user.user_id);
+            return res.status(400).json({
+                error: 'Please complete your book drop-off before canceling the subscription',
+            });
+        }
+
+        // Check if the user has a book
+        if (user.book_id) {
+            console.log('User has a book assigned:', user.book_id, 'user:', user.user_id);
+            return res.status(400).json({
+                error: 'Please drop off your current book before canceling the subscription',
+            });
+        }
+
+        // Find the active subscription payment
+        const subscriptionPayment = await SubscriptionPayment.findOne({
+            user_id: user.user_id,
+            isActive: true,
+        });
+        if (!subscriptionPayment) {
+            console.log('No active subscription payment found for user:', user.user_id);
+            return res.status(404).json({ error: 'No active subscription payment found' });
         }
 
         const canceledSubscriptionType = user.subscription_type;
 
-        // Reset subscription details
-        user.subscription_type = 'basic'; // Default back to basic
-        user.subscription_validity = currentDate; // Set to current date to indicate no validity
+        // Cancel Razorpay subscription (auto-pay)
+        if (subscriptionPayment.razorpay_subscription_id) {
+            try {
+                await razorpay.subscriptions.cancel(subscriptionPayment.razorpay_subscription_id);
+                console.log('Razorpay subscription canceled:', subscriptionPayment.razorpay_subscription_id);
+            } catch (err) {
+                console.error('Failed to cancel Razorpay subscription:', err.message);
+                return res.status(500).json({ error: 'Failed to cancel auto-pay subscription' });
+            }
+        }
+
+        // Initiate refund for the deposit
+        if (subscriptionPayment.deposit_payment_id && subscriptionPayment.deposit_amount) {
+            try {
+                const refund = await razorpay.payments.refund(subscriptionPayment.deposit_payment_id, {
+                    amount: subscriptionPayment.deposit_amount * 100, // Convert to paise
+                    speed: 'normal', // or 'optimum' for faster refunds
+                });
+                subscriptionPayment.refund_status = 'processed';
+                console.log('Deposit refund initiated:', refund.id, 'for payment:', subscriptionPayment.deposit_payment_id);
+            } catch (err) {
+                subscriptionPayment.refund_status = 'failed';
+                console.error('Failed to refund deposit:', err.message);
+                return res.status(500).json({ error: 'Failed to process deposit refund' });
+            }
+        }
+
+        // Mark subscription as inactive
+        subscriptionPayment.isActive = false;
+        await subscriptionPayment.save();
+
+        // Update user subscription details
+        user.subscription_type = 'basic';
+        user.subscription_validity = currentDate;
         await user.save();
 
-        // Update SubscriptionPayment records to mark as inactive
-        await SubscriptionPayment.updateMany(
-            { user_id: user.user_id, isActive: true },
-            { $set: { isActive: false } }
-        );
+        // Cancel any pickup_pending transactions
+        const pickupPendingTransactions = await Transaction.find({
+            user_id: user._id,
+            status: 'pickup_pending',
+        });
+
+        for (const transaction of pickupPendingTransactions) {
+            // Make the book available again
+            const book = await Book.findById(transaction.book_id);
+            if (book) {
+                book.available = true;
+                book.updatedAt = new Date();
+                await book.save();
+            }
+            // Delete the transaction
+            await Transaction.deleteOne({ _id: transaction._id });
+            console.log('Canceled pickup_pending transaction:', transaction.transaction_id, 'for user:', user.user_id);
+        }
 
         console.log(`Subscription cancelled for user ${user.user_id}: Plan ${canceledSubscriptionType}`);
-        res.status(200).json({ message: `Subscription (${canceledSubscriptionType}) cancelled successfully` });
+        res.status(200).json({ message: `Subscription (${canceledSubscriptionType}) cancelled and deposit refund initiated successfully` });
     } catch (err) {
         console.error('Error cancelling subscription:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: `Failed to cancel subscription: ${err.message}` });
     }
 });
 

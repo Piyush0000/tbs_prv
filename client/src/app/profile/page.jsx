@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation"; // Import useRouter for navigation
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import QRCodeGenerator from "../../components/QRCodeGenerator";
 import ThemeToggle from "../../components/ThemeToggle";
@@ -18,13 +18,11 @@ function MainComponent() {
   const [showQR, setShowQR] = useState({});
   const [currentBook, setCurrentBook] = useState(null);
   const [loadingBook, setLoadingBook] = useState(true);
-  const [showConfirmCancel, setShowConfirmCancel] = useState(false); // New state for confirmation dialog
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     if (user) {
-      console.log("User object in useEffect:", user);
-      console.log("User book_id:", user?.book_id);
       setEmail(user.email || "");
       setPhone(user.phone_number || "");
       fetchTransactions();
@@ -57,15 +55,19 @@ function MainComponent() {
 
       await refetch();
       setError(null);
-      setShowConfirmCancel(false); // Hide confirmation dialog after success
-      alert("Subscription cancelled successfully.");
+      setShowConfirmCancel(false);
+      alert("Subscription canceled and deposit refund initiated successfully.");
     } catch (err) {
       console.error("Error cancelling subscription:", err.message);
-      setError(err.message);
-      setShowConfirmCancel(false); // Hide confirmation dialog on error
+      if (err.message.includes("drop off")) {
+        setError("Please complete your book drop-off before canceling the subscription.");
+      } else {
+        setError(err.message);
+      }
+      setShowConfirmCancel(false);
     }
   };
-  
+
   const fetchTransactions = async () => {
     setLoadingTransactions(true);
     try {
@@ -100,8 +102,6 @@ function MainComponent() {
         ["pickup_pending", "dropoff_pending"].includes(t.status)
       );
 
-      console.log("Pending Transactions:", pending);
-
       setPreviousTransactions(previous);
       setPendingTransactions(pending);
     } catch (err) {
@@ -120,15 +120,11 @@ function MainComponent() {
     setLoadingBook(true);
     try {
       const token = localStorage.getItem("token");
-      console.log("Fetching current book for user:", user?.user_id);
-      console.log("User book_id in fetchCurrentBook:", user?.book_id);
-
       if (!token) {
         throw new Error("No authentication token found.");
       }
 
       if (!user?.book_id) {
-        console.log("No book_id found for user. Setting currentBook to null.");
         setCurrentBook(null);
         return;
       }
@@ -148,7 +144,6 @@ function MainComponent() {
       }
 
       const bookData = await res.json();
-      console.log("Fetched book data:", bookData);
       setCurrentBook(bookData);
     } catch (err) {
       console.error("Error fetching current book:", err.message);
@@ -217,19 +212,14 @@ function MainComponent() {
       setError("No book to drop off");
       return;
     }
-    // Redirect to the drop-off page with the current book's book_id
     router.push(`/drop-off?book_id=${currentBook.book_id}`);
   };
 
   const toggleQR = (transactionId) => {
-    setShowQR((prev) => {
-      const newState = {
-        ...prev,
-        [transactionId]: !prev[transactionId],
-      };
-      console.log("Toggling QR for transactionId:", transactionId, "New showQR state:", newState);
-      return newState;
-    });
+    setShowQR((prev) => ({
+      ...prev,
+      [transactionId]: !prev[transactionId],
+    }));
   };
 
   if (loading) {
@@ -263,7 +253,6 @@ function MainComponent() {
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-8">
-        {/* Profile Section */}
         <div className="text-center mb-8">
           <div className="relative inline-block">
             {user.image ? (
@@ -285,8 +274,6 @@ function MainComponent() {
             Customer ID: {user.user_id}
           </p>
         </div>
-
-        {/* Subscription Section */}
         <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
           <div>
             <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark capitalize">
@@ -313,8 +300,6 @@ function MainComponent() {
             Upgrade Subscription
           </a>
         </div>
-
-        {/* Email/Phone Update Section */}
         <div className="space-y-4">
           {showEmailForm ? (
             <form onSubmit={handleUpdateEmail} className="space-y-3">
@@ -354,7 +339,6 @@ function MainComponent() {
               </button>
             </div>
           )}
-
           {showPhoneForm ? (
             <form onSubmit={handleUpdatePhone} className="space-y-3">
               <input
@@ -394,8 +378,6 @@ function MainComponent() {
             </div>
           )}
         </div>
-
-        {/* Current Book Section */}
         <div className="space-y-4">
           <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
             Current Book
@@ -451,8 +433,6 @@ function MainComponent() {
             </div>
           )}
         </div>
-
-        {/* Previous Transactions Section */}
         <div className="space-y-4">
           <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
             Previous Transactions
@@ -487,8 +467,6 @@ function MainComponent() {
             ))
           )}
         </div>
-
-        {/* Pending Transactions Section (Table Format) */}
         <div className="space-y-4">
           <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
             Pending Transactions
@@ -545,8 +523,6 @@ function MainComponent() {
             </div>
           )}
         </div>
-
-        {/* QR Code Modal */}
         {Object.keys(showQR).some((key) => showQR[key]) && (
           <div
             className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
@@ -591,20 +567,16 @@ function MainComponent() {
             })}
           </div>
         )}
-
-        {/* Cancel Button */}
         {user.subscription_type !== "basic" && (
           <div className="text-center">
             <button
-              onClick={() => setShowConfirmCancel(true)} // Show confirmation dialog
+              onClick={() => setShowConfirmCancel(true)}
               className="inline-block px-6 py-2.5 text-sm font-medium text-warning-light dark:text-warning-dark border border-warning-light dark:border-warning-dark rounded-full hover:bg-warning-light dark:hover:bg-warning-dark transition-colors"
             >
               Cancel Subscription
             </button>
           </div>
         )}
-
-        {/* Confirmation Dialog */}
         {showConfirmCancel && (
           <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
             <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center justify-center relative max-w-md w-full">
@@ -616,13 +588,13 @@ function MainComponent() {
               </p>
               <div className="flex space-x-4">
                 <button
-                  onClick={handleCancelSubscription} // Confirm cancellation
+                  onClick={handleCancelSubscription}
                   className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full font-button hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
                 >
                   Yes, I confirm
                 </button>
                 <button
-                  onClick={() => setShowConfirmCancel(false)} // Cancel the dialog
+                  onClick={() => setShowConfirmCancel(false)}
                   className="px-4 py-2 border border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
                 >
                   No, go back
@@ -631,8 +603,6 @@ function MainComponent() {
             </div>
           </div>
         )}
-
-        {/* Logout Section */}
         <div className="text-center">
           <a
             href="/auth/logout"
@@ -641,8 +611,6 @@ function MainComponent() {
             Log Out
           </a>
         </div>
-
-        {/* Error Display */}
         {(userError || error) && (
           <div className="bg-warning-light dark:bg-warning-dark text-warning-light dark:text-warning-dark p-3 rounded-lg font-body">
             {userError || error}
