@@ -183,7 +183,8 @@ function MainComponent() {
         }
         setShowConfirmCancel(false);
     }
-};
+  };
+
   const handleCancelPickup = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -444,7 +445,21 @@ function MainComponent() {
                 className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
                 placeholder="Enter your email"
               />
-            
+              <div className="flex space-x-2 justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full font-button hover:bg-primary-light dark:hover:bg-primary-dark"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(false)}
+                  className="px-4 py-2 border text-text-light dark:text-text-dark border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
+                >
+                  Cancel
+                </button>
+              </div>
             </form>
           ) : (
             <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
@@ -502,7 +517,7 @@ function MainComponent() {
               Loading book...
             </div>
           ) : !currentBook ? (
-            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body">
+            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark text-text shack-text-dark font-body">
               No book currently borrowed.
             </div>
           ) : (
@@ -534,7 +549,7 @@ function MainComponent() {
                 disabled={pendingTransactions.some(
                   (t) =>
                     t.book_id.book_id === currentBook.book_id &&
-                    t.status === "dropoff_pending"
+                    t.status === "dropoff_pending tij"
                 )}
               >
                 {pendingTransactions.some(
@@ -577,11 +592,11 @@ function MainComponent() {
                   </p>
                   <p>
                     <strong>Type:</strong>{" "}
-                    {transaction.status === "picked_up" ? "Pickup" : "Drop-off"}
+                    {transaction.status === "picked_up" ? "Picked Up" : "Dropped Off"}
                   </p>
                   <p>
                     <strong>Date:</strong>{" "}
-                    {new Date(transaction.transaction_date).toLocaleDateString(
+                    {new Date(transaction.processed_at || transaction.created_at).toLocaleDateString(
                       "en-US",
                       {
                         year: "numeric",
@@ -628,8 +643,8 @@ function MainComponent() {
                       <td className="px-4 py-2">{transaction.book_id.name}</td>
                       <td className="px-4 py-2">
                         {transaction.status === "pickup_pending"
-                          ? "Pickup"
-                          : "Drop-off"}
+                          ? "Pickup Pending"
+                          : "Drop-off Pending"}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <button

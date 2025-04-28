@@ -7,27 +7,28 @@ const Book = require('../models/Book');
 const Cafe = require('../models/Cafe');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 // Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  logger.info('Authorization header:', authHeader);
+  console.log('Authorization header:', authHeader);
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    logger.warn('No token provided or invalid format');
+    console.log('No token provided or invalid format');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const token = authHeader.split(' ')[1];
-  logger.info('Token extracted:', token);
+  console.log('Token extracted:', token);
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    logger.info('Token decoded:', decoded);
+    console.log('Token decoded:', decoded);
     req.userId = decoded.id;
     next();
   } catch (err) {
-    logger.error('Token verification failed:', err.message);
+    console.error('Token verification failed:', err.message);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -35,10 +36,19 @@ const authMiddleware = (req, res, next) => {
 // GET /api/transactions - Retrieve list of transactions with case-insensitive filtering
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, user_id } = req.query;
     let query = {};
 
     if (status) query.status = { $regex: status, $options: 'i' };
+    if (user_id) {
+      // Resolve custom user_id (e.g., User_025) to MongoDB _id
+      const user = await User.findOne({ user_id });
+      if (!user) {
+        logger.warn(`User not found for user_id: ${user_id}`);
+        return res.status(404).json({ error: 'User not found' });
+      }
+      query.user_id = user._id; // Use MongoDB _id
+    }
 
     const transactions = await Transaction.find(query)
       .populate('book_id')
@@ -78,61 +88,64 @@ router.post(
     }
 
     const { book_id, cafe_id } = req.body;
+    const session = await mongoose.startSession();
 
     try {
+      session.startTransaction();
+
       // Find the user by userId (from JWT) and get their ObjectId
-      const user = await User.findById(req.userId);
+      const user = await User.findById(req.userId).session(session);
       if (!user) {
         logger.warn(`User not found: ${req.userId}`);
+        await session.abortTransaction();
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Check subscription status
+      // Check subscription validity and deposit status
       const currentDate = new Date();
-      if (
-        user.subscription_type === 'basic' ||
-        new Date(user.subscription_validity) < currentDate
-      ) {
-        logger.warn(`Active subscription required for user: ${user.user_id}`);
-        return res.status(403).json({ error: 'Active subscription required' });
+      if (user.subscription_validity < currentDate || user.deposit_status !== 'deposited') {
+        logger.warn(`Invalid subscription or deposit for user: ${user.user_id}`);
+        await session.abortTransaction();
+        return res.status(400).json({ error: 'Active subscription and deposit required' });
       }
 
       // Check for pending transactions
       const pendingTransactions = await Transaction.find({
         user_id: user._id,
-        status: { $in: ['pickup_pending', 'dropoff_pending'] },
-      });
+        status: { $in: ['pickup_pending', 'picked_up', 'dropoff_pending'] },
+      }).session(session);
       if (pendingTransactions.length > 0) {
-        logger.warn(`Pending transaction exists for user: ${user.user_id}`);
-        return res.status(400).json({
-          error: 'You have a pending transaction. Please complete it before requesting another book.',
-        });
-      }
-
-      // Check if user has a book
-      if (user.book_id) {
-        logger.warn(`User already has a book: ${user.book_id}, user: ${user.user_id}`);
-        return res.status(400).json({
-          error: 'You currently have a book. Please drop it off before requesting another book.',
-        });
+        logger.warn(`User has pending transactions: ${user.user_id}`);
+        await session.abortTransaction();
+        return res.status(400).json({ error: 'Complete pending transactions before requesting another book' });
       }
 
       // Find the book by book_id and get its ObjectId
-      const book = await Book.findOne({ book_id });
+      const book = await Book.findOne({ book_id }).session(session);
       if (!book) {
         logger.warn(`Book not found: ${book_id}`);
+        await session.abortTransaction();
         return res.status(404).json({ error: 'Book not found' });
       }
       if (!book.available) {
         logger.warn(`Book unavailable: ${book_id}`);
+        await session.abortTransaction();
         return res.status(400).json({ error: 'Book is currently unavailable' });
       }
 
       // Find the cafe by cafe_id and get its ObjectId
-      const cafe = await Cafe.findOne({ cafe_id });
+      const cafe = await Cafe.findOne({ cafe_id }).session(session);
       if (!cafe) {
         logger.warn(`Cafe not found: ${cafe_id}`);
+        await session.abortTransaction();
         return res.status(404).json({ error: 'Cafe not found' });
+      }
+
+      // Check subscription limit for basic users
+      if (user.book_id && user.subscription_type === 'basic') {
+        logger.warn(`Subscription limit exceeded for user: ${user.user_id}`);
+        await session.abortTransaction();
+        return res.status(400).json({ error: 'Basic subscription allows only one book at a time' });
       }
 
       // Create the transaction
@@ -143,24 +156,56 @@ router.post(
         status: 'pickup_pending',
       };
 
+      // Fallback: Generate transaction_id if not set by the pre-save hook
+      if (!transactionData.transaction_id) {
+        let isUnique = false;
+        let attempts = 0;
+        const maxAttempts = 5;
+
+        while (!isUnique && attempts < maxAttempts) {
+          const timestamp = Date.now();
+          const randomStr = Math.random().toString(36).substring(2, 8);
+          const newTransactionId = `TXN_${timestamp}_${randomStr}`;
+
+          console.log(`Fallback - Attempt ${attempts + 1}: Checking uniqueness of transaction_id: ${newTransactionId}`);
+          const existingTransaction = await Transaction.findOne({ transaction_id: newTransactionId }).session(session);
+          if (!existingTransaction) {
+            transactionData.transaction_id = newTransactionId;
+            isUnique = true;
+          }
+          attempts++;
+        }
+
+        if (!isUnique) {
+          throw new Error('Failed to generate a unique transaction_id after multiple attempts');
+        }
+        console.log('Fallback - Generated transaction_id:', transactionData.transaction_id);
+      }
+
       const transaction = new Transaction(transactionData);
-      await transaction.save();
+      console.log('Transaction before save:', transaction);
+
+      await transaction.save({ session });
       logger.info(`Transaction created successfully: ${transaction.transaction_id} for user: ${user.user_id}`);
 
       // Update book availability
       book.available = false;
       book.updatedAt = new Date();
-      await book.save();
+      await book.save({ session });
 
       // Update user to track the book they have
       user.book_id = book.book_id;
       user.updatedAt = new Date();
-      await user.save();
+      await user.save({ session });
 
+      await session.commitTransaction();
       res.status(201).json({ message: 'Pickup request created successfully', transaction });
     } catch (err) {
+      await session.abortTransaction();
       logger.error(`Error creating transaction: ${err.message}, Stack: ${err.stack}`);
       res.status(500).json({ error: `Failed to create transaction: ${err.message}` });
+    } finally {
+      session.endSession();
     }
   }
 );
@@ -297,7 +342,7 @@ router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
   const { transaction_id } = req.params;
 
   try {
-    logger.info(`Completing transaction with transaction_id: ${transaction_id}`);
+    console.log(`Completing transaction with transaction_id: ${transaction_id}`);
     const transaction = await Transaction.findOne({ transaction_id, status: 'dropoff_pending' });
     if (!transaction) {
       logger.warn(`No pending drop-off transaction: ${transaction_id}`);
@@ -329,7 +374,7 @@ router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
 
     // Update book: make it available and set keeper_id to cafe's string cafe_id
     book.available = true;
-    book.keeper_id = cafe.cafe_id; // Use the string cafe_id (e.g., CAFE_006)
+    book.keeper_id = cafe.cafe_id;
     book.updatedAt = new Date();
     await book.save();
 
@@ -401,6 +446,5 @@ router.delete('/cancel/:transaction_id', authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 module.exports = router;
