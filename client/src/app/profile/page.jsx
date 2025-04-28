@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import QRCodeGenerator from "../../components/QRCodeGenerator";
@@ -140,42 +141,49 @@ function MainComponent() {
 
   const handleCancelSubscription = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("No authentication token found. Please sign in.");
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/users/cancel-subscription`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+        const token = localStorage.getItem("token");
+        if (!token) {
+            throw new Error("No authentication token found. Please sign in.");
         }
-      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to cancel subscription");
-      }
+        console.log('Initiating subscription cancellation for user:', user.user_id);
 
-      await refetch();
-      setError(null);
-      setShowConfirmCancel(false);
-      alert("Subscription cancelled successfully.");
+        const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/users/cancel-subscription`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Subscription cancellation failed:', errorData);
+            throw new Error(errorData.error || "Failed to cancel subscription");
+        }
+
+        const data = await response.json();
+        console.log('Subscription cancellation response:', data);
+
+        await refetch();
+        setError(null);
+        setShowConfirmCancel(false);
+        alert("Subscription cancelled successfully.");
     } catch (err) {
-      console.error("Error cancelling subscription:", err.message);
-      if (err.message.includes("drop off")) {
-        setError("Please complete your book drop-off before canceling the subscription.");
-      } else {
-        setError(err.message);
-      }
-      setShowConfirmCancel(false);
+        console.error("Error cancelling subscription:", err.message);
+        if (err.message.includes("drop off")) {
+            setError("Please complete your book drop-off before canceling the subscription.");
+        } else if (err.message.includes("subscription payment")) {
+            setError("Failed to update subscription payment. Please try again or contact support.");
+        } else {
+            setError(err.message);
+        }
+        setShowConfirmCancel(false);
     }
-  };
-
+};
   const handleCancelPickup = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -357,6 +365,23 @@ function MainComponent() {
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark py-12 px-4 sm:px-6 lg:px-8">
+      <div className="absolute top-4 left-4">
+        <Link href="/">
+          <div className="w-12 h-12 cursor-pointer">
+            <img
+              src="/Logo-Lightmode.png"
+              alt="The Book Shelves Logo"
+              className="w-full h-full object-contain dark:hidden"
+            />
+            <img
+              src="/Logo-Darkmode.png"
+              alt="The Book Shelves Logo"
+              className="w-full h-full object-contain hidden dark:block"
+            />
+          </div>
+        </Link>
+      </div>
+
       <div className="max-w-3xl mx-auto space-y-8">
         <div className="text-center mb-8">
           <div className="relative inline-block">

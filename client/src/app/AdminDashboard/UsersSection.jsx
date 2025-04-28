@@ -78,6 +78,9 @@ function UsersSection({ data, setData, onEdit }) {
     });
 
     const handleDelete = async (userId) => {
+        const confirmed = window.confirm("Are you sure you want to delete this user?");
+        if (!confirmed) return;
+    
         try {
             const token = localStorage.getItem('token');
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`, {

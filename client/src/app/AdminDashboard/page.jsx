@@ -414,7 +414,7 @@ function AdminDashboard() {
         } else if (activeTab === "cafes") {
           setCafes(
             cafes.map((cafe) =>
-              cafe.cafe_id === editItemId ? responseData.cafe : cafe //migh need update
+              cafe.cafe_id === editItemId ? responseData.cafe : cafe
             )
           );
         } else if (activeTab === "users") {
@@ -489,16 +489,12 @@ function AdminDashboard() {
               </button>
             ))}
           </div>
-          {activeTab !== "transactions" && (
+          {activeTab !== "transactions" && activeTab !== "users" && (
             <button
               onClick={openAddModal}
               className="px-4 py-2 rounded-full bg-green-600 text-white font-medium hover:bg-green-700"
             >
-              {activeTab === "books"
-                ? "Add Book"
-                : activeTab === "cafes"
-                ? "Add Cafe"
-                : "Add User"}
+              {activeTab === "books" ? "Add Book" : "Add Cafe"}
             </button>
           )}
         </div>
@@ -513,7 +509,7 @@ function AdminDashboard() {
           <UsersSection data={users} setData={setUsers} onEdit={openEditModal} />
         )}
         {activeTab === "transactions" && (
-          <TransactionsSection data={transactions} setData={setTransactions} /> // Pass setTransactions
+          <TransactionsSection data={transactions} setData={setTransactions} />
         )}
       </div>
 
