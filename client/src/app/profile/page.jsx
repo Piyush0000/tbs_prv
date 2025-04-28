@@ -371,6 +371,7 @@ function MainComponent() {
       t.status === "pickup_pending"
   );
 
+    // the update email button is disabled.
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-8">
@@ -459,11 +460,11 @@ function MainComponent() {
                 {user.email}
               </div>
               <button
-                onClick={() => setShowEmailForm(true)}
+               disabled onClick={() => setShowEmailForm(true)}
                 className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
               >
                 Update Email
-              </button>
+              </button> 
             </div>
           )}
 
