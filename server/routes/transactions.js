@@ -41,13 +41,12 @@ router.get('/', authMiddleware, async (req, res) => {
 
     if (status) query.status = { $regex: status, $options: 'i' };
     if (user_id) {
-      // Resolve custom user_id (e.g., User_025) to MongoDB _id
       const user = await User.findOne({ user_id });
       if (!user) {
         logger.warn(`User not found for user_id: ${user_id}`);
         return res.status(404).json({ error: 'User not found' });
       }
-      query.user_id = user._id; // Use MongoDB _id
+      query.user_id = user._id;
     }
 
     const transactions = await Transaction.find(query)
@@ -93,7 +92,6 @@ router.post(
     try {
       session.startTransaction();
 
-      // Find the user by userId (from JWT) and get their ObjectId
       const user = await User.findById(req.userId).session(session);
       if (!user) {
         logger.warn(`User not found: ${req.userId}`);
@@ -101,7 +99,6 @@ router.post(
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Check subscription validity and deposit status
       const currentDate = new Date();
       if (user.subscription_validity < currentDate || user.deposit_status !== 'deposited') {
         logger.warn(`Invalid subscription or deposit for user: ${user.user_id}`);
@@ -109,7 +106,6 @@ router.post(
         return res.status(400).json({ error: 'Active subscription and deposit required' });
       }
 
-      // Check for pending transactions
       const pendingTransactions = await Transaction.find({
         user_id: user._id,
         status: { $in: ['pickup_pending', 'picked_up', 'dropoff_pending'] },
@@ -120,7 +116,6 @@ router.post(
         return res.status(400).json({ error: 'Complete pending transactions before requesting another book' });
       }
 
-      // Find the book by book_id and get its ObjectId
       const book = await Book.findOne({ book_id }).session(session);
       if (!book) {
         logger.warn(`Book not found: ${book_id}`);
@@ -133,7 +128,6 @@ router.post(
         return res.status(400).json({ error: 'Book is currently unavailable' });
       }
 
-      // Find the cafe by cafe_id and get its ObjectId
       const cafe = await Cafe.findOne({ cafe_id }).session(session);
       if (!cafe) {
         logger.warn(`Cafe not found: ${cafe_id}`);
@@ -141,14 +135,12 @@ router.post(
         return res.status(404).json({ error: 'Cafe not found' });
       }
 
-      // Check subscription limit for basic users
       if (user.book_id && user.subscription_type === 'basic') {
         logger.warn(`Subscription limit exceeded for user: ${user.user_id}`);
         await session.abortTransaction();
         return res.status(400).json({ error: 'Basic subscription allows only one book at a time' });
       }
 
-      // Create the transaction
       const transactionData = {
         book_id: book._id,
         user_id: user._id,
@@ -156,7 +148,6 @@ router.post(
         status: 'pickup_pending',
       };
 
-      // Fallback: Generate transaction_id if not set by the pre-save hook
       if (!transactionData.transaction_id) {
         let isUnique = false;
         let attempts = 0;
@@ -188,12 +179,10 @@ router.post(
       await transaction.save({ session });
       logger.info(`Transaction created successfully: ${transaction.transaction_id} for user: ${user.user_id}`);
 
-      // Update book availability
       book.available = false;
       book.updatedAt = new Date();
       await book.save({ session });
 
-      // Update user to track the book they have
       user.book_id = book.book_id;
       user.updatedAt = new Date();
       await user.save({ session });
@@ -210,80 +199,118 @@ router.post(
   }
 );
 
-// POST /api/transactions/scan/book/:book_id - Verify book QR code
-router.post('/scan/book/:book_id', authMiddleware, async (req, res) => {
-  const { book_id } = req.params;
-
-  try {
-    const book = await Book.findOne({ book_id });
-    if (!book) {
-      logger.warn(`Book not found during scan: ${book_id}`);
-      return res.status(404).json({ error: 'Book not found' });
+// POST /api/transactions/scan/verify - Verify both QR codes and approve transaction
+router.post(
+  '/scan/verify',
+  authMiddleware,
+  [
+    body('transaction_id').notEmpty().withMessage('transaction_id is required').trim(),
+    body('user_id').notEmpty().withMessage('user_id is required').trim(),
+    body('book_id').notEmpty().withMessage('book_id is required').trim(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn(`Validation error on POST /api/transactions/scan/verify: ${JSON.stringify(errors.array())}`);
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const transaction = await Transaction.findOne({ book_id: book._id, status: 'pickup_pending' });
-    if (!transaction) {
-      logger.warn(`No pending transaction for book: ${book_id}`);
-      return res.status(404).json({ error: 'No pending transaction found for this book' });
-    }
+    const { transaction_id, user_id, book_id } = req.body;
+    const session = await mongoose.startSession();
 
-    logger.info(`Book QR code verified successfully: ${book_id}, transaction: ${transaction.transaction_id}`);
-    res.status(200).json({ message: 'Book verified successfully', transaction_id: transaction.transaction_id });
-  } catch (err) {
-    logger.error(`Error scanning book QR code: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    try {
+      session.startTransaction();
+
+      const transaction = await Transaction.findOne({ transaction_id }).session(session);
+      if (!transaction) {
+        logger.warn(`Transaction not found: ${transaction_id}`);
+        await session.abortTransaction();
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+
+      if (!['pickup_pending', 'dropoff_pending'].includes(transaction.status)) {
+        logger.warn(`Transaction not in pending state: ${transaction_id}, status: ${transaction.status}`);
+        await session.abortTransaction();
+        return res.status(400).json({ error: 'Transaction is not pending' });
+      }
+
+      const user = await User.findOne({ user_id }).session(session);
+      if (!user) {
+        logger.warn(`User not found: ${user_id}`);
+        await session.abortTransaction();
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const book = await Book.findOne({ book_id }).session(session);
+      if (!book) {
+        logger.warn(`Book not found: ${book_id}`);
+        await session.abortTransaction();
+        return res.status(404).json({ error: 'Book not found' });
+      }
+
+      if (String(transaction.user_id) !== String(user._id) || String(transaction.book_id) !== String(book._id)) {
+        logger.warn(`QR codes do not match transaction: ${transaction_id}`);
+        await session.abortTransaction();
+        return res.status(400).json({ error: 'Scanned QR codes do not match transaction' });
+      }
+
+      if (transaction.status === 'pickup_pending') {
+        if (transaction.status === 'picked_up') {
+          logger.info(`Transaction already approved: ${transaction_id}`);
+          await session.commitTransaction();
+          return res.status(200).json({ message: 'Transaction already approved', transaction });
+        }
+
+        transaction.status = 'picked_up';
+        transaction.processed_at = new Date();
+        await transaction.save({ session });
+
+        book.available = false;
+        book.keeper_id = user.user_id;
+        book.updatedAt = new Date();
+        await book.save({ session });
+
+        user.book_id = book.book_id;
+        user.updatedAt = new Date();
+        await user.save({ session });
+
+        logger.info(`Pickup transaction approved: ${transaction_id}`);
+        await session.commitTransaction();
+        return res.status(200).json({ message: 'Pickup transaction approved', transaction });
+      } else if (transaction.status === 'dropoff_pending') {
+        const cafe = await Cafe.findById(transaction.cafe_id).session(session);
+        if (!cafe) {
+          logger.warn(`Cafe not found: ${transaction.cafe_id}`);
+          await session.abortTransaction();
+          return res.status(404).json({ error: 'Cafe not found' });
+        }
+
+        transaction.status = 'dropped_off';
+        transaction.processed_at = new Date();
+        await transaction.save({ session });
+
+        book.available = true;
+        book.keeper_id = cafe.cafe_id;
+        book.updatedAt = new Date();
+        await book.save({ session });
+
+        user.book_id = null;
+        user.updatedAt = new Date();
+        await user.save({ session });
+
+        logger.info(`Drop-off transaction completed: ${transaction_id}`);
+        await session.commitTransaction();
+        return res.status(200).json({ message: 'Drop-off transaction completed', transaction });
+      }
+    } catch (err) {
+      await session.abortTransaction();
+      logger.error(`Error verifying QR codes: ${err.message}`);
+      res.status(500).json({ error: err.message });
+    } finally {
+      session.endSession();
+    }
   }
-});
-
-// POST /api/transactions/scan/user/:user_id - Verify user QR code and approve transaction
-router.post('/scan/user/:user_id', authMiddleware, async (req, res) => {
-  const { user_id } = req.params;
-
-  try {
-    const user = await User.findOne({ user_id });
-    if (!user) {
-      logger.warn(`User not found during scan: ${user_id}`);
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const transaction = await Transaction.findOne({ user_id: user._id, status: 'pickup_pending' });
-    if (!transaction) {
-      logger.warn(`No pending transaction for user: ${user_id}`);
-      return res.status(404).json({ error: 'No pending transaction found for this user' });
-    }
-
-    const book = await Book.findById(transaction.book_id);
-    if (!book) {
-      logger.warn(`Book not found for transaction: ${transaction.book_id}`);
-      return res.status(400).json({ error: 'Book not found' });
-    }
-
-    // Idempotent check: if already picked up, return success without modifying
-    if (transaction.status === 'picked_up') {
-      logger.info(`Transaction already approved: ${transaction.transaction_id}, user: ${user_id}`);
-      return res.status(200).json({ message: 'Transaction already approved', transaction });
-    }
-
-    transaction.status = 'picked_up';
-    transaction.processed_at = new Date();
-    await transaction.save();
-
-    book.available = false;
-    book.keeper_id = user.user_id;
-    book.updatedAt = new Date();
-    await book.save();
-
-    user.book_id = book.book_id;
-    user.updatedAt = new Date();
-    await user.save();
-
-    logger.info(`Transaction approved successfully: ${transaction.transaction_id}, user: ${user_id}`);
-    res.status(200).json({ message: 'Transaction approved, book picked up successfully', transaction });
-  } catch (err) {
-    logger.error(`Error approving transaction: ${err.message}`);
-    res.status(500).json({ error: err.message });
-  }
-});
+);
 
 // PUT /api/transactions/drop-off/:book_id - Initiate drop-off process
 router.put('/drop-off/:book_id', authMiddleware, async (req, res) => {
@@ -367,18 +394,15 @@ router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
-    // Update transaction status
     transaction.status = 'dropped_off';
     transaction.processed_at = new Date();
     await transaction.save();
 
-    // Update book: make it available and set keeper_id to cafe's string cafe_id
     book.available = true;
     book.keeper_id = cafe.cafe_id;
     book.updatedAt = new Date();
     await book.save();
 
-    // Clear user's book_id
     user.book_id = null;
     user.updatedAt = new Date();
     await user.save();
@@ -425,16 +449,13 @@ router.delete('/cancel/:transaction_id', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
-    // Delete the transaction
     await transaction.deleteOne();
 
-    // Update book: make it available, ensure keeper_id remains cafe's cafe_id
     book.available = true;
     book.keeper_id = cafe.cafe_id;
     book.updatedAt = new Date();
     await book.save();
 
-    // Clear user's book_id
     user.book_id = null;
     user.updatedAt = new Date();
     await user.save();
