@@ -28,8 +28,11 @@ function TheBookShelves() {
   const fetchBooks = async (query = "") => {
     setLoadingBooks(true);
     try {
-      let url = `${process.env.NEXT_PUBLIC_API_URL}/books`;
-      if (query) url += `?name=${encodeURIComponent(query)}`;
+      // Construct query string with available=true and optional name search
+      const queryParams = new URLSearchParams({ available: true });
+      if (query) queryParams.append("name", encodeURIComponent(query));
+      const url = `${process.env.NEXT_PUBLIC_API_URL}/books?${queryParams.toString()}`;
+
       const res = await fetch(url);
       if (!res.ok) throw new Error((await res.json()).error || "Failed to fetch books");
       const data = await res.json();

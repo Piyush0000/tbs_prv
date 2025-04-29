@@ -125,9 +125,9 @@ export function CafeExpanded({ cafe, onClose }) {
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Location:</strong> {cafe.location}
             </p>
-            <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
+           {/* <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Distance:</strong> {cafe.distance} km
-            </p>
+            </p>*/}
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Specialties:</strong> {cafe.specialties || "N/A"}
             </p>
