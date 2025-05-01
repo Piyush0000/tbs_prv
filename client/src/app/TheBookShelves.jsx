@@ -31,10 +31,13 @@ function TheBookShelves() {
       // Construct query string with available=true and optional name search
       const queryParams = new URLSearchParams({ available: true });
       if (query) queryParams.append("name", encodeURIComponent(query));
-      const url = `${process.env.NEXT_PUBLIC_API_URL}/books?${queryParams.toString()}`;
+      const url = `${
+        process.env.NEXT_PUBLIC_API_URL
+      }/books?${queryParams.toString()}`;
 
       const res = await fetch(url);
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to fetch books");
+      if (!res.ok)
+        throw new Error((await res.json()).error || "Failed to fetch books");
       const data = await res.json();
       const mappedBooks = data.map((book) => ({
         book_id: book.book_id,
@@ -66,7 +69,8 @@ function TheBookShelves() {
       let url = `${process.env.NEXT_PUBLIC_API_URL}/cafes`;
       if (query) url += `?name=${encodeURIComponent(query)}`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to fetch cafes");
+      if (!res.ok)
+        throw new Error((await res.json()).error || "Failed to fetch cafes");
       const data = await res.json();
       const mappedCafes = data.map((cafe) => ({
         id: cafe.cafe_id,
@@ -129,6 +133,25 @@ function TheBookShelves() {
     },
   ];
 
+  const faqs = [
+    {
+      question: 'How much does it cost to subscribe?',
+      answer: '₹49 for 1 month + ₹300 refundable deposit.',
+    },
+    {
+      question: 'Can I return the book to a different café?',
+      answer: 'Yes! Flexibility is our thing.',
+    },
+    {
+      question: 'What if I lose a book?',
+      answer: 'You can replace it or pay the book’s cost. That’s all.',
+    },
+    {
+      question: 'Is it only for Kolkata?',
+      answer: 'For now, yes. But we’re expanding soon!',
+    },
+  ];
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -182,22 +205,69 @@ function TheBookShelves() {
           </section>
         )}
 
+        {!searchQuery && (
+          <section
+            id="how-it-works"
+            className="bg-background-light dark:bg-background-dark py-16 px-6"
+          >
+            <div className="max-w-6xl mx-auto text-center mb-12">
+              <h2 className="text-3xl font-bold mb-2">📚 How It Works</h2>
+              <p className="text-gray-600">
+                Your reading journey in 4 simple steps
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+              {[
+                {
+                  title: "Step 1 – Subscribe in 1 Minute",
+                  description:
+                    "Pay ₹49 for a month + ₹300 security deposit (100% refundable after your subscription ends).",
+                },
+                {
+                  title: "Step 2 – Visit Any Partner Café",
+                  description:
+                    "Walk into any TBS café and spot our bookshelf. Enjoy special discounts too!",
+                },
+                {
+                  title: "Step 3 – Borrow a Book You Love",
+                  description: "Scan the QR, log your pick, and START READING!",
+                },
+                {
+                  title: "Step 4 – Return Anywhere, Anytime",
+                  description:
+                    "Drop your book at any partner café — no rush, no fines.",
+                },
+              ].map((step, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-100 rounded-2xl shadow-md p-6 hover:bg-gray-200 transition duration-300 text-center"
+                >
+                  <div className="text-2xl font-semibold mb-2">
+                    {step.title}
+                  </div>
+                  <p className="text-gray-600 text-sm">{step.description}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {/* Books Section */}
         <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
-         Find Bookshelves Near You!
+          Find Bookshelves Near You!
         </h2>
         <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-4 sm:mb-6 translate-y-[2vw]">
-          Your next favorite cafe and story all in one place. 
+          Your next favorite cafe and story all in one place.
         </p>
         <section id="Book Section" className="mb-12 translate-y-[5vw]">
           <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
-          New Books Every Month!
+            New Books Every Month!
           </h2>
           <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
-          From thrillers to romance, business to true crime.
+            From thrillers to romance, business to true crime.
           </p>
           <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
-          We have something for all your reading needs
+            We have something for all your reading needs
           </p>
           {loadingBooks ? (
             <div className="text-gray-600">Loading books...</div>
@@ -222,7 +292,7 @@ function TheBookShelves() {
         </section>
 
         {/* Cafes Section */}
-        <section id="Cafe Section" className="mb-12 translate-y-[5vw]" >
+        <section id="Cafe Section" className="mb-12 translate-y-[5vw]">
           <h2 className="text-2xl sm:text-3xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             Find a new Cafe!
           </h2>
@@ -258,7 +328,30 @@ function TheBookShelves() {
           </Link>
         </div>
       )}
-      <section  id="Cafe Section" className="mb-12 translate-y-[5vw]"> </section>
+      <section id="Cafe Section" className="mb-12 translate-y-[5vw]">
+        {" "}
+      </section>
+      {!searchQuery && (
+         <section className="bg-background-light dark:bg-background-dark py-16 px-4">
+         <div className="w-[80%] mx-auto text-left">
+           <h2 className="text-3xl font-header font-semibold text-text-light dark:text-text-dark mb-10">
+             FAQs
+           </h2>
+           <div className="space-y-8">
+             {faqs.map((faq, index) => (
+               <div key={index}>
+                 <h3 className="text-xl font-header text-textscd-light dark:text-textscd-dark mb-2">
+                   Q: {faq.question}
+                 </h3>
+                 <p className="text-base font-body text-text-light dark:text-text-dark">
+                   A: {faq.answer}
+                 </p>
+               </div>
+             ))}
+           </div>
+         </div>
+       </section>
+      )}
       {!searchQuery && <Footer />}
     </div>
   );
