@@ -252,6 +252,30 @@ function TheBookShelves() {
             </div>
           </section>
         )}
+      
+        {/* How It Works Visual Guide */}
+        {/*
+        {!searchQuery && (
+          <section
+            id="how-it-works-2"
+            className="bg-background-light dark:bg-background-dark py-16 px-6"
+          >
+          <div className="max-w-6xl mx-auto text-center mb-12">
+          <h2 className="text-3xl font-bold mb-2">📖 How It Works - Visual Guide</h2>
+          <p className="text-gray-600">
+             A step-by-step visual guide to your reading journey
+          </p>
+          </div>
+          <div className="max-w-6xl mx-auto">
+          <img
+          src="/how-it-works-tbs.png" // Replace with the actual path to the image in your project
+          alt="How It Works Visual Guide"
+          className="w-full h-auto rounded-lg shadow-md"
+          />
+        </div>
+        </section>
+      )} 
+        /*}
         {/* Books Section */}
         <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
           Find Bookshelves Near You!
