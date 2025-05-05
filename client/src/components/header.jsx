@@ -221,7 +221,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
                     Profile
                   </Link>
                   <Link
-                    href="/auth/signout"
+                    href="/auth/logout"
                     className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                     onClick={toggleMenu}
                   >

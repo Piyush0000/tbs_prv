@@ -2,7 +2,7 @@ import Link from "next/link";
 
 const Footer = () => {
   return (
-    <footer className=" bg-background-dark dark:bg-background-light px-4 md:px-8 py-8 sm:py-16 mx-auto">
+    <footer className=" bg-background-dark dark:bg-background-light px-4 md:px-8 py-8 sm:py-16 mx-auto translate-y-[-10]">
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
         {/* Row 1: Logo */}
         <div className="flex flex-col items-start sm:flex-row sm:justify-between">
@@ -35,9 +35,7 @@ const Footer = () => {
           {/* Contact Info (desktop only) */}
           <div className="hidden sm:block sm:text-right sm:w-[45%]">
             <div className="text-text-dark dark:text-text-light font-body text-base">
-              <p>Phone: (555) 123-4567</p>
               <p>Email: info@thebookshelves.com</p>
-              <p>123 Book Street, Reading City, RC 12345</p>
             </div>
             <div className="flex space-x-4 mt-4 justify-end text-text-dark dark:text-text-light">
               <a
@@ -49,7 +47,7 @@ const Footer = () => {
                 <span>FB</span>
               </a>
               <a
-                href="https://instagram.com/thebookshelves"
+                href="https://www.instagram.com/th_bookshelves"
                 target="_blank"
                 rel ="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
@@ -57,7 +55,7 @@ const Footer = () => {
                 <span>IG</span>
               </a>
               <a
-                href="https://linkedin.com/company/thebookshelves"
+                href="https://www.linkedin.com/company/th-bookshelves/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
@@ -77,11 +75,9 @@ const Footer = () => {
             Contact
           </Link>
           <div className="text-text-dark dark:text-text-light font-body text-sm mt-4">
-            <p>Phone: (555) 123-4567</p>
             <p>Email: info@thebookshelves.com</p>
-            <p>123 Book Street, Reading City, RC 12345</p>
           </div>
-          <div className="flex space-x-4 mt-4">
+          <div className="flex space-x-4 mt-4 text-text-dark dark:text-text-light">
             <a
               href="https://facebook.com/thebookshelves"
               target="_blank"

@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import Footer from "../../components/footer";
 import Header from "../../components/header";
 import ThemeToggle from "../../components/ThemeToggle";
@@ -355,7 +355,7 @@ function PaymentPage() {
                   1. Security Deposit (₹299)
                 </h3>
                 <p className="text-text-light dark:text-text-dark mb-4">
-                  Mandatory for all subscriptions.
+                      This amount will be 100% refunded once the subscription is over
                 </p>
                 <button
                   onClick={handleDepositPayment}
@@ -389,7 +389,7 @@ function PaymentPage() {
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="Enter coupon code"
+                  placeholder="Enter coupon code (optional)"
                   className="w-full px-4 py-2 border rounded-md text-text-light dark:text-text-light mb-2"
                   disabled={!depositPaid}
                 />

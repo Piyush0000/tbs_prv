@@ -204,20 +204,20 @@ function TheBookShelves() {
             </div>
           </section>
         )}
-
+        {/* Previous How It Works Section */}
         {!searchQuery && (
           <section
             id="how-it-works"
             className="bg-background-light dark:bg-background-dark py-16 px-6"
           >
             <div className="max-w-6xl mx-auto text-center mb-12">
-              <h2 className="text-3xl font-bold mb-2">📚 How It Works</h2>
-              <p className="text-gray-600">
+              <h2 className="text-4xl text-primary-light dark:text-primary-dark font-bold mb-2">How It Works</h2>
+              <p className="text-2xl text-text-light dark:text-text-dark">
                 Your reading journey in 4 simple steps
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto ">
               {[
                 {
                   title: "Step 1 – Subscribe in 1 Minute",
@@ -241,12 +241,12 @@ function TheBookShelves() {
               ].map((step, index) => (
                 <div
                   key={index}
-                  className="bg-gray-100 rounded-2xl shadow-md p-6 hover:bg-gray-200 transition duration-300 text-center"
+                  className="bg-backgroundSCD-light dark:bg-backgroundSCD-dark  rounded-2xl shadow-md p-6 hover:bg-gray-200 transition duration-300 text-center"
                 >
-                  <div className="text-2xl font-semibold mb-2">
+                  <div className="text-2xl text-text-light dark:text-text-dark font-semibold mb-2">
                     {step.title}
                   </div>
-                  <p className="text-gray-600 text-sm">{step.description}</p>
+                  <p className="text-text-light dark:text-text-dark text-sm">{step.description}</p>
                 </div>
               ))}
             </div>
@@ -254,8 +254,8 @@ function TheBookShelves() {
         )}
       
         {/* How It Works Visual Guide */}
-        {/*
-        {!searchQuery && (
+        
+        {/* {!searchQuery && (
           <section
             id="how-it-works-2"
             className="bg-background-light dark:bg-background-dark py-16 px-6"
@@ -266,31 +266,25 @@ function TheBookShelves() {
              A step-by-step visual guide to your reading journey
           </p>
           </div>
-          <div className="max-w-6xl mx-auto">
-          <img
-          src="/how-it-works-tbs.png" // Replace with the actual path to the image in your project
-          alt="How It Works Visual Guide"
-          className="w-full h-auto rounded-lg shadow-md"
-          />
-        </div>
+          <div className="w-full flex justify-center">
+  <img
+    src="/how-it-works-tbs-2.png"
+    alt="How It Works Visual Guide"
+    className="max-h-[80vh] h-auto w-auto rounded-lg shadow-md"
+  />
+</div>
         </section>
-      )} 
-        /*}
+      )} */}
+        
         {/* Books Section */}
-        <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
-          Find Bookshelves Near You!
-        </h2>
-        <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-4 sm:mb-6 translate-y-[2vw]">
-          Your next favorite cafe and story all in one place.
-        </p>
-        <section id="Book Section" className="mb-12 translate-y-[5vw]">
-          <h2 className="text-2xl sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
+        <section id="Book Section" className="mb-12 translate-y-[2vw]">
+          <h2 className="text-5xl text-center sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             New Books Every Month!
           </h2>
-          <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
+          <p className="text-1xl text-center sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
             From thrillers to romance, business to true crime.
           </p>
-          <p className="text-1xl sm:text-2xl font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
+          <p className="text-1xl sm:text-2xl text-center font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
             We have something for all your reading needs
           </p>
           {loadingBooks ? (
@@ -304,7 +298,7 @@ function TheBookShelves() {
                   <Book key={book.book_id} book={book} />
                 ))}
               </div>
-              <div className="flex justify-center mt-6">
+              <div className="flex justify-center mt-6 translate-y-[2vh]">
                 <Link href="/discover">
                   <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
                     Explore he Bookshelf
@@ -317,21 +311,24 @@ function TheBookShelves() {
 
         {/* Cafes Section */}
         <section id="Cafe Section" className="mb-12 translate-y-[5vw]">
-          <h2 className="text-2xl sm:text-3xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
-            Find a new Cafe!
-          </h2>
+        <h2 className="text-2xl text-center sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
+          Find Bookshelves Near You!
+        </h2>
+        <p className="text-1xl text-center sm:text-2xl font-body text-text-light dark:text-text-dark mb-4 sm:mb-6 translate-y-[2vw]">
+          Your next favorite cafe and story all in one place.
+        </p>
           {loadingCafes ? (
             <div className="text-gray-600">Loading cafes...</div>
           ) : cafes.length === 0 ? (
             <div className="text-gray-600">No cafes available.</div>
           ) : (
             <>
-              <div className="w-full">
+              <div className="w-full translate-y-[5vw]">
                 <CafeExpansion cafes={cafes.slice(0, 8)} />
               </div>
-              <div className="flex justify-center mt-6">
+              <div className="flex justify-center mt-6 translate-y-[5vw]">
                 <Link href="/discover">
-                  <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
+                  <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors  ">
                     View All Cafes
                   </button>
                 </Link>
@@ -356,7 +353,7 @@ function TheBookShelves() {
         {" "}
       </section>
       {!searchQuery && (
-         <section className="bg-background-light dark:bg-background-dark py-16 px-4">
+         <section className="bg-background-light dark:bg-background-dark py-16 px-4 translate-y-[2vw]">
          <div className="w-[80%] mx-auto text-left">
            <h2 className="text-3xl font-header font-semibold text-text-light dark:text-text-dark mb-10">
              FAQs
