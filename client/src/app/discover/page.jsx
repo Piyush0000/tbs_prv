@@ -152,7 +152,7 @@ function MainComponent() {
         city: cafe.city,
         location: cafe.location,
         audioSummary: cafe.audio_url,
-        googlemap: cafe.gmap_url,
+        googlemap: cafe.gmap_url|| "https://www.google.com/maps",
         specialties: cafe.specials,
         discounts: `${cafe.discount}%`,
         description: cafe.description || "No description available",
