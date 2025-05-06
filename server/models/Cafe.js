@@ -7,6 +7,7 @@ const cafeSchema = new mongoose.Schema({
   city: { type: String }, // Parsed city
   area: { type: String }, // Parsed area
   image_url: { type: String },
+  gmap_url: { type: String, required: false },
   audio_url: { type: String },
   average_bill: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },

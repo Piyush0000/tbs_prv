@@ -24,7 +24,7 @@ export function CafeCard({ cafe, onExpand }) {
         {cafe.name}
       </h3>
       <p className="text-xs sm:text-sm text-text-light dark:text-text-dark line-clamp-1">
-        {cafe.distance} km away
+        {cafe.area}, {cafe.city}
       </p>
     </div>
   );
@@ -128,6 +128,9 @@ export function CafeExpanded({ cafe, onClose }) {
            {/* <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Distance:</strong> {cafe.distance} km
             </p>*/}
+            <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
+              <strong>View Map:</strong> {cafe.googlemap}
+            </p>
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Specialties:</strong> {cafe.specialties || "N/A"}
             </p>
