@@ -386,17 +386,14 @@ function MainComponent() {
       <div className="max-w-3xl mx-auto space-y-8">
         <div className="text-center mb-8">
           <div className="relative inline-block">
-            {user.image ? (
               <img
-                src={user.image}
-                alt="Profile"
-                className="w-32 h-32 rounded-full object-cover border-4 border-border-light dark:border-border-dark"
-              />
-            ) : (
-              <div className="w-32 h-32 rounded-full bg-backgroundSCD-light dark:bg-backgroundSCD-dark flex items-center justify-center">
-                <i className="fas fa-user text-4xl text-text-light dark:text-text-dark"></i>
-              </div>
-            )}
+              src={
+                user.image ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=1f2930&color=fff&size=128`
+              }
+              alt="Profile"
+              className="w-32 h-32 rounded-full object-cover border-4 border-border-light dark:border-border-dark"
+            />
           </div>
           <h1 className="mt-4 text-3xl font-bold font-header text-text-light dark:text-text-dark">
             {user.name || "No Name Set"}
@@ -407,7 +404,7 @@ function MainComponent() {
         </div>
         <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
           <div>
-            <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark capitalize">
+            <h2 className="text-1xl sm:text-2xl  font-bold font-header text-text-light dark:text-text-dark capitalize">
               {user.subscription_type?.toUpperCase() || "BASIC"} SUBSCRIPTION
             </h2>
             <p className="text-text-light dark:text-text-dark font-body">
@@ -429,7 +426,7 @@ function MainComponent() {
           </div>
           <a
             href="/Subscription"
-            className="inline-flex items-center px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+            className="inline-flex text-center items-center px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
           >
             Upgrade Subscription
           </a>
@@ -509,7 +506,7 @@ function MainComponent() {
           )}
         </div>
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
+          <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Current Book
           </h2>
           {loadingBook ? (
@@ -517,7 +514,7 @@ function MainComponent() {
               Loading book...
             </div>
           ) : !currentBook ? (
-            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark text-text shack-text-dark font-body">
+            <div className="px-6 py-3 text-center rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark shack-text-dark font-body">
               No book currently borrowed.
             </div>
           ) : (
@@ -566,7 +563,7 @@ function MainComponent() {
           )}
         </div>
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
+          <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Previous Transactions
           </h2>
           {loadingTransactions ? (
@@ -574,7 +571,7 @@ function MainComponent() {
               Loading transactions...
             </div>
           ) : previousTransactions.length === 0 ? (
-            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body">
+            <div className="px-6 py-3 text-center rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body">
               No previous transactions found.
             </div>
           ) : (
@@ -611,7 +608,7 @@ function MainComponent() {
           )}
         </div>
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold font-header text-text-light dark:text-text-dark">
+          <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Pending Transactions
           </h2>
           {loadingTransactions ? (
@@ -619,7 +616,7 @@ function MainComponent() {
               Loading transactions...
             </div>
           ) : pendingTransactions.length === 0 ? (
-            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body">
+            <div className="px-6 py-3 text-center rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body">
               No pending transactions.
             </div>
           ) : (

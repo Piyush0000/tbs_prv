@@ -208,11 +208,11 @@ function TheBookShelves() {
         {!searchQuery && (
           <section
             id="how-it-works"
-            className="bg-background-light dark:bg-background-dark py-16 px-6"
+            className="bg-background-light  dark:bg-background-dark py-16 px-6"
           >
             <div className="max-w-6xl mx-auto text-center mb-12">
-              <h2 className="text-4xl text-primary-light dark:text-primary-dark font-bold mb-2">How It Works</h2>
-              <p className="text-2xl text-text-light dark:text-text-dark">
+              <h2 className="text-2xl text-center sm:text-4xl text-primary-light dark:text-primary-dark font-bold mb-2">How It Works</h2>
+              <p className="text-1xl sm:text-2xl text-text-light dark:text-text-dark">
                 Your reading journey in 4 simple steps
               </p>
             </div>
@@ -278,7 +278,7 @@ function TheBookShelves() {
         
         {/* Books Section */}
         <section id="Book Section" className="mb-12 translate-y-[2vw]">
-          <h2 className="text-5xl text-center sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
+          <h2 className="text-2xl sm:text-4xl text-center font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             New Books Every Month!
           </h2>
           <p className="text-1xl text-center sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
@@ -301,7 +301,7 @@ function TheBookShelves() {
               <div className="flex justify-center mt-6 translate-y-[2vh]">
                 <Link href="/discover">
                   <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
-                    Explore he Bookshelf
+                    Explore The Bookshelf
                   </button>
                 </Link>
               </div>

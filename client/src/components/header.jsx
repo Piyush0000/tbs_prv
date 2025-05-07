@@ -32,66 +32,42 @@ const Header = ({ location, onLocationChange, onSearch }) => {
           </Link>
         </div>
 
-        {/* Search Section - Desktop */}
-        <div className={`flex-1 md:flex hidden mr-2 ${isLoggedIn ? "max-w-4xl" : "max-w-2xl ml-4"} ${isLoggedIn ? "" : "translate-x-[5vw]"}`}>
-          <div className="relative flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-2 w-full">
-            {isLoggedIn && (
-              <div className="min-w-[180px] border-r border-border-light dark:border-border-dark pr-4 mr-4">
-                <div className="flex items-center gap-2 text-text-light dark:text-text-dark">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="w-5 h-5"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"
-                    />
-                  </svg>
-                  <span className="text-sm">{location}</span>
-                </div>
-              </div>
-            )}
-            <div className={`flex-1 ${isLoggedIn ? "bg-background-light dark:bg-background-dark" : ""} rounded-full flex items-center`}>
-              <input
-                type="text"
-                name="search"
-                placeholder={isLoggedIn ? "Search with Book name, Author, Publication or Café name" : "Search with name, Author or Publication"}
-                className="flex-1 text-sm text-text-light dark:text-text-dark outline-none bg-transparent px-3 py-1.5"
-                onChange={onSearch}
-              />
-              <button
-                onClick={onSearch}
-                className="ml-2 p-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
-                aria-label="Search"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-5 h-5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
+       {/* Search Section - Desktop */}
+       <div className={`flex-1 md:flex hidden mr-2 ${isLoggedIn ? "max-w-4xl" : "max-w-2xl ml-4"} ${isLoggedIn ? "" : "translate-x-[5vw]"}`}>
+  <div className="relative flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-1.5 w-full">
+    <div className={`flex-1 ${isLoggedIn ? "bg-background-light dark:bg-background-dark" : ""} rounded-full flex items-center`}>
+      <input
+        type="text"
+        name="search"
+        placeholder={isLoggedIn ? "Search with Book name, Author, Publication or Café name" : "Search with name, Author or Publication"}
+        className="flex-1 text-sm text-text-light dark:text-text-dark outline-none bg-transparent px-2 py-1"
+        onChange={onSearch}
+      />
+      <button
+        onClick={onSearch}
+        className="ml-1.5 p-1.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+        aria-label="Search"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+          className="w-4 h-4"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+
 
         {/* Search Section - Mobile */}
         <div className="flex-1 flex md:hidden items-center">

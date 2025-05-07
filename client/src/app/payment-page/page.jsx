@@ -378,7 +378,7 @@ function PaymentPage() {
               </div>
               <div className="border border-border-light dark:border-border-dark p-4 rounded-lg">
                 <h3 className="text-xl font-semibold mb-2">
-                  2. Setup Monthly Auto-Pay (₹49)
+                  2. Setup your monthly subscription (49) 
                 </h3>
                 <p className="text-text-light dark:text-text-dark mb-4">
                   {isCodeApplied

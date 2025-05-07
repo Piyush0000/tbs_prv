@@ -106,51 +106,29 @@ const Footer = () => {
         </div>
 
         {/* Row 3: Links */}
-        <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center pt-8 border-t border-border-light dark:border-border-dark space-y-6 sm:space-y-0">
-          {/* Left Links */}
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-8 items-start sm:items-center ">
-            <Link
-              href="/how-it-works"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              How it works?
-            </Link>
-            <Link
-              href="#"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              Terms of Use
-            </Link>
-            <Link
-              href="#"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              Sales and Refunds
-            </Link>
-          </div>
-
-          {/* Right Links */}
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-8 items-start sm:items-center">
-            <Link
-              href="/Subscription"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              Subscription
-            </Link>
-            <Link
-              href="#"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              Careers
-            </Link>
-            <Link
-              href="#"
-              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-            >
-              Meet the team
-            </Link>
-          </div>
-        </div>
+        <div className="flex justify-between items-center pt-8 border-t border-border-light dark:border-border-dark">
+  {/* Left Links */}
+  <div className="flex flex-row space-x-8 items-center">
+    <Link
+      href="/how-it-works"
+      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+    >
+      How it works?
+    </Link>
+    <Link
+      href="#"
+      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+    >
+      Terms of Use
+    </Link>
+    <Link
+      href="/Subscription"
+      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+    >
+      Subscription
+    </Link>
+  </div>
+</div>
       </div>
     </footer>
   );

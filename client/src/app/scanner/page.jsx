@@ -168,13 +168,13 @@ function QRScanner({ onScanned }) {
               <div
                 className={`w-3 h-3 rounded-full ${firstCode ? "bg-green-500" : "bg-gray-300"}`}
               ></div>
-              <span className="text-gray-700">First QR Code</span>
+              <span className="text-gray-700">Scan user QR</span>
             </div>
             <div className="flex items-center space-x-3">
               <div
                 className={`w-3 h-3 rounded-full ${secondCode ? "bg-green-500" : "bg-gray-300"}`}
               ></div>
-              <span className="text-gray-700">Second QR Code</span>
+              <span className="text-gray-700">Scan book QR</span>
             </div>
           </div>
         </div>
