@@ -5,16 +5,16 @@ function CafesSection({ data, setData, onEdit }) {
     const { refreshToken } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
     const [filter, setFilter] = useState({
-        location: "",
-        city: "",
         area: "",
+        city: "",
+        location: "",
         average_bill: "",
         ratings: "",
     });
     const [filterOptions, setFilterOptions] = useState({
-        locations: [],
-        cities: [],
         areas: [],
+        cities: [],
+        locations: [],
         average_bills: [],
         ratings: [],
     });
@@ -231,11 +231,12 @@ function CafesSection({ data, setData, onEdit }) {
                         <tr className="bg-gray-50 whitespace-nowrap">
                             <th className="px-4 py-3 text-left">Cafe ID</th>
                             <th className="px-4 py-3 text-left">Name</th>
-                            <th className="px-4 py-3 text-left">Location</th>
-                            <th className="px-4 py-3 text-left">City</th>
                             <th className="px-4 py-3 text-left">Area</th>
+                            <th className="px-4 py-3 text-left">City</th>
+                            <th className="px-4 py-3 text-left">Location</th>
                             <th className="px-4 py-3 text-left">Image URL</th>
                             <th className="px-4 py-3 text-left">Audio URL</th>
+                            <th className="px-4 py-3 text-left">gmap URL</th>
                             <th className="px-4 py-3 text-left">Avg Bill</th>
                             <th className="px-4 py-3 text-left">Discount</th>
                             <th className="px-4 py-3 text-left">Ratings</th>
@@ -282,6 +283,7 @@ function CafesSection({ data, setData, onEdit }) {
                                         "N/A"
                                     )}
                                     </td>
+                                <td className="px-4 py-3 truncate max-w-xs">₹{cafe.gmap_url}</td>
                                 <td className="px-4 py-3">₹{cafe.average_bill}</td>
                                 <td className="px-4 py-3">{cafe.discount}%</td>
                                 <td className="px-4 py-3">{cafe.ratings}</td>
