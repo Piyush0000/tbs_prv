@@ -383,7 +383,7 @@ function PaymentPage() {
                 <p className="text-text-light dark:text-text-dark mb-4">
                   {isCodeApplied
                     ? "First month free with coupon, auto-pay starts next month."
-                    : "Auto-pay setup starts today."}
+                    : "Start your reading journey!"}
                 </p>
                 <input
                   type="text"

@@ -246,8 +246,7 @@ router.post(
             .withMessage('Average bill must be a positive number'),
         body('discount')
             .optional()
-            .isFloat({ min: 0 })
-            .withMessage('Discount must be a positive number'),
+            .trim(),
         body('ratings')
             .optional()
             .isFloat({ min: 0, max: 5 })
@@ -286,7 +285,7 @@ router.post(
                 gmap_url,
                 audio_url,
                 average_bill: average_bill || 0,
-                discount: discount || 0,
+                discount: discount ,
                 ratings: ratings || 0,
                 specials,
                 cafe_owner_id: cafe_owner_id || null,

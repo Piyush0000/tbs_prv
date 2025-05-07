@@ -194,7 +194,7 @@ function CafeDashboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name: editForm.name, discount: Number(editForm.discount) }),
+        body: JSON.stringify({ name: editForm.name, discount: editForm.discount }),
       });
       if (res.status === 401) {
         token = await refreshToken();
@@ -211,7 +211,7 @@ function CafeDashboard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ name: editForm.name, discount: Number(editForm.discount) }),
+          body: JSON.stringify({ name: editForm.name, discount: editForm.discount }),
         });
         if (!retryRes.ok) throw new Error("Failed to update cafe after token refresh");
         const updatedCafe = await retryRes.json();
@@ -396,7 +396,7 @@ function CafeDashboard() {
               <input
                 id="discount"
                 name="discount"
-                type="number"
+                type="text"
                 value={editForm.discount}
                 onChange={handleEditChange}
                 disabled={!isEditing}

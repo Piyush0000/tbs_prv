@@ -112,7 +112,7 @@ router.get('/:cafe_id/discounts', authMiddleware, cafeOwnerMiddleware, async (re
             cafe_id: cafe.cafe_id,
             name: cafe.name,
             discount: cafe.discount,
-            message: `This cafe offers a ${cafe.discount}% discount based on user subscription tier.`,
+            message: `This cafe offers a ${cafe.discount} discount based on user subscription tier.`,
         };
 
         console.log('Discount benefits fetched:', discountBenefits);

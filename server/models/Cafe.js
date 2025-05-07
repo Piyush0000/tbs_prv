@@ -10,7 +10,7 @@ const cafeSchema = new mongoose.Schema({
   gmap_url: { type: String, required: false },
   audio_url: { type: String },
   average_bill: { type: Number, default: 0 },
-  discount: { type: Number, default: 0 },
+  discount: { type: String, required: false },
   ratings: { type: Number, min: 0, max: 5, default: 0 },
   specials: { type: String },
   cafe_owner_id: { type: String, ref: 'User', default: null },

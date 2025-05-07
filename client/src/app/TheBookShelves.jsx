@@ -83,7 +83,7 @@ function TheBookShelves() {
         googlemap: cafe.gmap_url || "https://www.google.com/maps",
         audioSummary: cafe.audio_url,
         specialties: cafe.specials,
-        discounts: `${cafe.discount}%`,
+        discounts: cafe.discount,
         priceRange: `₹${cafe.average_bill}`,
         description: cafe.description || "No description available",
         rating: cafe.ratings || "N/A",

@@ -283,9 +283,9 @@ function CafesSection({ data, setData, onEdit }) {
                                         "N/A"
                                     )}
                                     </td>
-                                <td className="px-4 py-3 truncate max-w-xs">₹{cafe.gmap_url}</td>
+                                <td className="px-4 py-3 truncate max-w-xs">{cafe.gmap_url}</td>
                                 <td className="px-4 py-3">₹{cafe.average_bill}</td>
-                                <td className="px-4 py-3">{cafe.discount}%</td>
+                                <td className="px-4 py-3">{cafe.discount || 'N/A'}</td>
                                 <td className="px-4 py-3">{cafe.ratings}</td>
                                 <td className="px-4 py-3">{cafe.specials || 'N/A'}</td>
                                 <td className="px-4 py-3">{cafe.cafe_owner_id || 'N/A'}</td>

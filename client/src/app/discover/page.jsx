@@ -154,7 +154,7 @@ function MainComponent() {
         audioSummary: cafe.audio_url,
         googlemap: cafe.gmap_url|| "https://www.google.com/maps",
         specialties: cafe.specials,
-        discounts: `${cafe.discount}%`,
+        discounts: cafe.discount,
         description: cafe.description || "No description available",
       }));
       if (initial) {

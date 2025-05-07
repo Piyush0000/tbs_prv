@@ -54,7 +54,7 @@ function DropOffContent() {
         rating: cafe.ratings,
         location: cafe.location,
         specialties: cafe.specials,
-        discounts: `${cafe.discount}%`,
+        discounts: cafe.discount,
         description: cafe.description || "No description available",
       }));
       setCafes(mappedCafes);

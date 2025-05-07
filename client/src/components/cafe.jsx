@@ -140,7 +140,7 @@ export function CafeExpanded({ cafe, onClose }) {
               <strong>Specialties:</strong> {cafe.specialties || "N/A"}
             </p>
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
-              <strong>Special Discounts:</strong> {cafe.discounts}
+              <strong>Special Discounts:</strong> {cafe.discounts || "N/A"}
             </p>
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-2">
               <strong>Price Range:</strong> {cafe.priceRange}
