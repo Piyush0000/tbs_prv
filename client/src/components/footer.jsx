@@ -116,7 +116,7 @@ const Footer = () => {
       How it works?
     </Link>
     <Link
-      href="#"
+      href="/TnC"
       className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
     >
       Terms of Use
