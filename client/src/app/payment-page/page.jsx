@@ -355,7 +355,7 @@ function PaymentPage() {
                   1. Security Deposit (₹299)
                 </h3>
                 <p className="text-text-light dark:text-text-dark mb-4">
-                      This amount will be 100% refunded once the subscription is over
+                  This amount will be 100% refunded once the subscription is over
                 </p>
                 <button
                   onClick={handleDepositPayment}
@@ -378,28 +378,30 @@ function PaymentPage() {
               </div>
               <div className="border border-border-light dark:border-border-dark p-4 rounded-lg">
                 <h3 className="text-xl font-semibold mb-2">
-                  2. Setup your monthly subscription (49) 
+                  2. Setup your monthly subscription (49)
                 </h3>
                 <p className="text-text-light dark:text-text-dark mb-4">
                   {isCodeApplied
                     ? "First month free with coupon, auto-pay starts next month."
                     : "Start your reading journey!"}
                 </p>
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="Enter coupon code (optional)"
-                  className="w-full px-4 py-2 border rounded-md text-text-light dark:text-text-light mb-2"
-                  disabled={!depositPaid}
-                />
-                <button
-                  onClick={handleApplyCode}
-                  className="w-full py-3 px-4 rounded-full font-medium transition-colors font-button bg-primary-light dark:bg-primary-dark text-background-light dark:text-background-dark hover:bg-primary-dark dark:hover:bg-primary-light mb-2"
-                  disabled={!depositPaid}
-                >
-                  Apply Code
-                </button>
+                <div className="flex flex-row sm:flex-col sm:items-start sm:gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="Enter coupon code (optional)"
+                    className="w-full px-4 py-2 border rounded-md text-text-light dark:text-text-light sm:mb-2"
+                    disabled={!depositPaid}
+                  />
+                  <button
+                    onClick={handleApplyCode}
+                    className="w-auto sm:w-full py-2 sm:py-3 px-4 rounded-md font-medium transition-colors font-button bg-primary-light dark:bg-primary-dark text-background-light dark:text-background-dark hover:bg-primary-dark dark:hover:bg-primary-light"
+                    disabled={!depositPaid}
+                  >
+                    Apply Code
+                  </button>
+                </div>
                 {message && (
                   <div
                     className={`mt-2 text-sm ${
