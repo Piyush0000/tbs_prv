@@ -28,13 +28,11 @@ function TheBookShelves() {
   const fetchBooks = async (query = "") => {
     setLoadingBooks(true);
     try {
-      // Construct query string with available=true and optional name search
       const queryParams = new URLSearchParams({ available: true });
       if (query) queryParams.append("name", encodeURIComponent(query));
       const url = `${
         process.env.NEXT_PUBLIC_API_URL
       }/books?${queryParams.toString()}`;
-
       const res = await fetch(url);
       if (!res.ok)
         throw new Error((await res.json()).error || "Failed to fetch books");
@@ -130,7 +128,7 @@ function TheBookShelves() {
       id: 3,
       title: "Read the book your friends are talking about",
       description:
-        "Genres range from thrillers to business to romance.Choose your favourite, sip your coffee, and enjoy real reading time.",
+        "Genres range from thrillers to business to romance. Choose your favourite, sip your coffee, and enjoy real reading time.",
       images: ["/book1.png", "/book2.png", "/book3.png"],
       buttonText: "Read Now",
     },
@@ -138,20 +136,20 @@ function TheBookShelves() {
 
   const faqs = [
     {
-      question: 'How much does it cost to subscribe?',
-      answer: '₹49 for 1 month + ₹300 refundable deposit.',
+      question: "How much does it cost to subscribe?",
+      answer: "₹49 for 1 month + ₹300 refundable deposit.",
     },
     {
-      question: 'Can I return the book to a different café?',
-      answer: 'Yes! Flexibility is our thing.',
+      question: "Can I return the book to a different café?",
+      answer: "Yes! Flexibility is our thing.",
     },
     {
-      question: 'What if I lose a book?',
-      answer: 'You can replace it or pay the book’s cost. That’s all.',
+      question: "What if I lose a book?",
+      answer: "You can replace it or pay the book’s cost. That’s all.",
     },
     {
-      question: 'Is it only for Kolkata?',
-      answer: 'For now, yes. But we’re expanding soon!',
+      question: "Is it only for Kolkata?",
+      answer: "For now, yes. But we’re expanding soon!",
     },
   ];
 
@@ -207,20 +205,21 @@ function TheBookShelves() {
             </div>
           </section>
         )}
-        {/* Previous How It Works Section */}
+        {/* How It Works Section */}
         {!searchQuery && (
           <section
             id="how-it-works"
-            className="bg-background-light  dark:bg-background-dark py-16 px-6"
+            className="bg-background-light dark:bg-background-dark py-16 px-6"
           >
             <div className="max-w-6xl mx-auto text-center mb-12">
-              <h2 className="text-2xl text-center sm:text-4xl text-primary-light dark:text-primary-dark font-bold mb-2">How It Works</h2>
-              <p className="text-1xl sm:text-2xl text-text-light dark:text-text-dark">
+              <h2 className="text-2xl sm:text-4xl text-primary-light dark:text-primary-dark font-bold mb-4">
+                How It Works
+              </h2>
+              <p className="text-xl sm:text-2xl text-text-light dark:text-text-dark">
                 Your reading journey in 4 simple steps
               </p>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto ">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
               {[
                 {
                   title: "Step 1 – Subscribe in 1 Minute",
@@ -244,50 +243,28 @@ function TheBookShelves() {
               ].map((step, index) => (
                 <div
                   key={index}
-                  className="bg-backgroundSCD-light dark:bg-backgroundSCD-dark  rounded-2xl shadow-md p-6 hover:bg-gray-200 transition duration-300 text-center"
+                  className="bg-backgroundSCD-light dark:bg-backgroundSCD-dark rounded-2xl shadow-md p-6 hover:bg-gray-200 transition duration-300 text-center"
                 >
                   <div className="text-2xl text-text-light dark:text-text-dark font-semibold mb-2">
                     {step.title}
                   </div>
-                  <p className="text-text-light dark:text-text-dark text-sm">{step.description}</p>
+                  <p className="text-text-light dark:text-text-dark text-sm">
+                    {step.description}
+                  </p>
                 </div>
               ))}
             </div>
           </section>
         )}
-      
-        {/* How It Works Visual Guide */}
-        
-        {/* {!searchQuery && (
-          <section
-            id="how-it-works-2"
-            className="bg-background-light dark:bg-background-dark py-16 px-6"
-          >
-          <div className="max-w-6xl mx-auto text-center mb-12">
-          <h2 className="text-3xl font-bold mb-2">📖 How It Works - Visual Guide</h2>
-          <p className="text-gray-600">
-             A step-by-step visual guide to your reading journey
-          </p>
-          </div>
-          <div className="w-full flex justify-center">
-  <img
-    src="/how-it-works-tbs-2.png"
-    alt="How It Works Visual Guide"
-    className="max-h-[80vh] h-auto w-auto rounded-lg shadow-md"
-  />
-</div>
-        </section>
-      )} */}
-        
         {/* Books Section */}
-        <section id="Book Section" className="mb-12 translate-y-[2vw]">
+        <section id="Book Section" className="mb-12 mt-8">
           <h2 className="text-2xl sm:text-4xl text-center font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             New Books Every Month!
           </h2>
-          <p className="text-1xl text-center sm:text-2xl font-body text-text-light dark:text-text-dark mb-2 sm:mb-2">
+          <p className="text-xl sm:text-2xl text-center font-body text-text-light dark:text-text-dark mb-2">
             From thrillers to romance, business to true crime.
           </p>
-          <p className="text-1xl sm:text-2xl text-center font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
+          <p className="text-xl sm:text-2xl text-center font-body text-text-light dark:text-text-dark mb-6 sm:mb-8">
             We have something for all your reading needs
           </p>
           {loadingBooks ? (
@@ -301,7 +278,7 @@ function TheBookShelves() {
                   <Book key={book.book_id} book={book} />
                 ))}
               </div>
-              <div className="flex justify-center mt-6 translate-y-[2vh]">
+              <div className="flex justify-center mt-6">
                 <Link href="/discover">
                   <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
                     Explore The Bookshelf
@@ -311,27 +288,26 @@ function TheBookShelves() {
             </>
           )}
         </section>
-
         {/* Cafes Section */}
-        <section id="Cafe Section" className="mb-12 translate-y-[5vw]">
-        <h2 className="text-2xl text-center sm:text-4xl font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6 translate-y-[2vw]">
-          Find Bookshelves Near You!
-        </h2>
-        <p className="text-1xl text-center sm:text-2xl font-body text-text-light dark:text-text-dark mb-4 sm:mb-6 translate-y-[2vw]">
-          Your next favorite cafe and story all in one place.
-        </p>
+        <section id="Cafe Section" className="mb-12 mt-8">
+          <h2 className="text-2xl sm:text-4xl text-center font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
+            Find Bookshelves Near You!
+          </h2>
+          <p className="text-xl sm:text-2xl text-center font-body text-text-light dark:text-text-dark mb-6">
+            Your next favorite cafe and story all in one place.
+          </p>
           {loadingCafes ? (
             <div className="text-gray-600">Loading cafes...</div>
           ) : cafes.length === 0 ? (
             <div className="text-gray-600">No cafes available.</div>
           ) : (
             <>
-              <div className="w-full translate-y-[5vw]">
+              <div className="w-full mt-6">
                 <CafeExpansion cafes={cafes.slice(0, 8)} />
               </div>
-              <div className="flex justify-center mt-6 translate-y-[5vw]">
+              <div className="flex justify-center mt-6">
                 <Link href="/discover">
-                  <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors  ">
+                  <button className="px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors">
                     View All Cafes
                   </button>
                 </Link>
@@ -339,10 +315,8 @@ function TheBookShelves() {
             </>
           )}
         </section>
-
         {!searchQuery && <ThemeToggle />}
       </main>
-
       {!searchQuery && (
         <div className="flex justify-center mb-12 md:hidden">
           <Link href="/discover">
@@ -352,29 +326,26 @@ function TheBookShelves() {
           </Link>
         </div>
       )}
-      <section id="Cafe Section" className="mb-12 translate-y-[5vw]">
-        {" "}
-      </section>
       {!searchQuery && (
-         <section className="bg-background-light dark:bg-background-dark py-16 px-4 translate-y-[2vw]">
-         <div className="w-[80%] mx-auto text-left">
-           <h2 className="text-3xl font-header font-semibold text-text-light dark:text-text-dark mb-10">
-             FAQs
-           </h2>
-           <div className="space-y-8">
-             {faqs.map((faq, index) => (
-               <div key={index}>
-                 <h3 className="text-xl font-header text-textscd-light dark:text-textscd-dark mb-2">
-                   Q: {faq.question}
-                 </h3>
-                 <p className="text-base font-body text-text-light dark:text-text-dark">
-                   A: {faq.answer}
-                 </p>
-               </div>
-             ))}
-           </div>
-         </div>
-       </section>
+        <section className="bg-background-light dark:bg-background-dark py-16 px-4 mt-8">
+          <div className="w-[80%] mx-auto text-left">
+            <h2 className="text-3xl font-header font-semibold text-text-light dark:text-text-dark mb-10">
+              FAQs
+            </h2>
+            <div className="space-y-8">
+              {faqs.map((faq, index) => (
+                <div key={index}>
+                  <h3 className="text-xl font-header text-textscd-light dark:text-textscd-dark mb-2">
+                    Q: {faq.question}
+                  </h3>
+                  <p className="text-base font-body text-text-light dark:text-text-dark">
+                    A: {faq.answer}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
       {!searchQuery && <Footer />}
     </div>

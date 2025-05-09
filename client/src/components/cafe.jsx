@@ -62,7 +62,7 @@ export function CafeExpanded({ cafe, onClose }) {
         author: book.author,
         publisher: book.publisher,
         description: book.description,
-        audioSummary: book.audio_url,
+        //audioSummary: book.audio_url,
         ratings: book.ratings || "N/A",
         language: book.language,
         available: book.available,
@@ -148,12 +148,12 @@ export function CafeExpanded({ cafe, onClose }) {
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-4">
               {cafe.description}
             </p>
-            {cafe.audioSummary && (
+           {/* {cafe.audioSummary && (
               <audio controls className="w-full mb-4">
                 <source src={cafe.audioSummary} type="audio/mpeg" />
                 Your browser does not support the audio element.
               </audio>
-            )}
+            )} */}
           </div>
 
           {/* Available Books Section */}

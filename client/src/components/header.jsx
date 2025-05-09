@@ -32,42 +32,44 @@ const Header = ({ location, onLocationChange, onSearch }) => {
           </Link>
         </div>
 
-       {/* Search Section - Desktop */}
-       <div className={`flex-1 md:flex hidden mr-2 ${isLoggedIn ? "max-w-4xl" : "max-w-2xl ml-4"} ${isLoggedIn ? "" : "translate-x-[5vw]"}`}>
-  <div className="relative flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-1.5 w-full">
-    <div className={`flex-1 ${isLoggedIn ? "bg-background-light dark:bg-background-dark" : ""} rounded-full flex items-center`}>
-      <input
-        type="text"
-        name="search"
-        placeholder={isLoggedIn ? "Search with Book name, Author, Publication or Café name" : "Search with name, Author or Publication"}
-        className="flex-1 text-sm text-text-light dark:text-text-dark outline-none bg-transparent px-2 py-1"
-        onChange={onSearch}
-      />
-      <button
-        onClick={onSearch}
-        className="ml-1.5 p-1.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
-        aria-label="Search"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
-          className="w-4 h-4"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-      </button>
-    </div>
-  </div>
-</div>
-
-
+        {/* Search Section - Desktop */}
+        <div className="flex-1 md:flex hidden items-center justify-center">
+          <div className="relative w-full max-w-lg lg:max-w-xl">
+            <div className="flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-1.5">
+              <input
+                type="text"
+                name="search"
+                placeholder={
+                  isLoggedIn
+                    ? "Search with Book name, Author, Publication or Café name"
+                    : "Search with name, Author or Publication"
+                }
+                className="flex-1 text-sm text-text-light dark:text-text-dark outline-none bg-transparent px-2 py-1"
+                onChange={onSearch}
+              />
+              <button
+                onClick={onSearch}
+                className="ml-1.5 p-1.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+                aria-label="Search"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Search Section - Mobile */}
         <div className="flex-1 flex md:hidden items-center">
