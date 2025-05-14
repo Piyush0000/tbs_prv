@@ -28,7 +28,7 @@ function SubscriptionPlan({ plan, isSelected, onSelect, isCurrentPlan }) {
 
       <div className="h-48 mb-6 overflow-hidden rounded-lg">
         <img
-          src={plan.image}
+          src="https://i.pinimg.com/564x/ed/f4/f6/edf4f6c42624c31db77d8352e6575841.jpg"
           alt={`${plan.name} plan showing ${plan.booksPerMonth} book${plan.booksPerMonth > 1 ? "s" : ""}`}
           className="w-full h-full object-cover"
         />
@@ -46,13 +46,13 @@ function SubscriptionPlan({ plan, isSelected, onSelect, isCurrentPlan }) {
         <div className="flex items-center text-text-light dark:text-text-dark">
           <i className="fas fa-book text-primary-light dark:text-primary-dark mr-3"></i>
           <span className="font-medium font-body">
-            {plan.booksPerMonth} book{plan.booksPerMonth > 1 ? "s" : ""} per month
+            Plus a security deposit of 299/-
           </span>
         </div>
 
         <div className="flex items-center text-text-light dark:text-text-dark">
           <i className="fas fa-coffee text-secondary-light dark:text-secondary-dark mr-3"></i>
-          <span className="font-medium font-body">{plan.cafeDiscount}% off at cafe</span>
+          <span className="font-medium font-body">100% refunded once the subscription ends</span>
         </div>
 
         <div className="h-px bg-border-light dark:bg-border-dark my-4"></div>

@@ -23,12 +23,12 @@ function MainComponent() {
       name: "Standard Plan",
       price: 49.0,
       image:
-        "https://images.unsplash.com/photo-1524578271613-d550eacf6090?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=1950&q=80",
+        "https://i.pinimg.com/564x/ed/f4/f6/edf4f6c42624c31db77d8352e6575841.jpg",
       features: [
-        "Borrow 1 books at a time",
-        "21-day borrowing period",
-        "15% discount at partner cafes",
-        "Reading community access",
+        "Get access to Unlimited books(1 book at a time)",
+        "Access to audiobooks and book summaries",
+        "Extra discount at partner cafes",
+        "Special invitations to book reading sessions",
       ],
     },
   ];
