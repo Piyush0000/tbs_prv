@@ -25,10 +25,10 @@ function MainComponent() {
       image:
         "https://i.pinimg.com/564x/ed/f4/f6/edf4f6c42624c31db77d8352e6575841.jpg",
       features: [
-        "Get access to Unlimited books(1 book at a time)",
-        "Access to audiobooks and book summaries",
-        "Extra discount at partner cafes",
-        "Special invitations to book reading sessions",
+        "☕Get access to Unlimited books(1 book at a time)",
+        "☕Access to audiobooks and book summaries",
+        "☕Extra discount at partner cafes",
+        "☕Special invitations to book reading sessions",
       ],
     },
   ];
