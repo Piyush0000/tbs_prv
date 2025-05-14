@@ -37,7 +37,7 @@ function SubscriptionPlan({ plan, isSelected, onSelect, isCurrentPlan }) {
       <div className="text-center mb-6">
         <h3 className="text-2xl font-bold font-header mb-2 text-text-light dark:text-text-dark">{plan.name}</h3>
         <p className="text-4xl font-bold text-text-light dark:text-text-dark">
-          ${plan.price}
+          ₹{plan.price}
           <span className="text-sm font-normal text-text-light dark:text-text-dark">/month</span>
         </p>
       </div>

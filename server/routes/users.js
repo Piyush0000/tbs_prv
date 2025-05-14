@@ -522,23 +522,11 @@ router.post('/verify-subscription-payment', authMiddleware, async (req, res) => 
             return res.status(400).json({ error: 'Invalid subscription amount. Expected ₹49' });
         }
 
-        // Log received verification data for debugging
-        console.log('Received subscription verification data:', {
-            razorpay_subscription_id,
-            razorpay_payment_id,
-            razorpay_signature,
-        });
-
-        // Generate signature as per Razorpay subscription authentication
         const body = razorpay_payment_id + '|' + razorpay_subscription_id;
         const expectedSignature = crypto
             .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
             .update(body)
             .digest('hex');
-
-        // Log signatures for comparison
-        console.log('Generated Signature:', expectedSignature);
-        console.log('Received Signature:', razorpay_signature);
 
         if (expectedSignature !== razorpay_signature) {
             console.warn(`Subscription payment verification failed for subscription ${razorpay_subscription_id}`);
@@ -550,26 +538,31 @@ router.post('/verify-subscription-payment', authMiddleware, async (req, res) => 
             return res.status(400).json({ error: 'Deposit payment required first' });
         }
 
+        // Find the existing deposit payment record
+        let subscriptionPayment = await SubscriptionPayment.findOne({
+            user_id: user.user_id,
+            deposit_status: 'deposited',
+            isActive: true,
+        });
+
+        if (!subscriptionPayment) {
+            return res.status(404).json({ error: 'No active deposit payment found' });
+        }
+
         user.subscription_type = tier;
         user.subscription_validity = isCodeApplied 
             ? new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000)
             : new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000);
         await user.save();
 
-        const subscriptionPayment = new SubscriptionPayment({
-            transaction_date: new Date(),
-            payment_id: razorpay_payment_id,
-            razorpay_subscription_id: razorpay_subscription_id,
-            user_id: user.user_id,
-            user_email: user.email,
-            validity: user.subscription_validity,
-            subscription_type: tier,
-            amount: isCodeApplied ? 0 : amount,
-            isCodeApplied: isCodeApplied,
-            isActive: true,
-            subscription_status: 'active',
-            deposit_status: user.deposit_status,
-        });
+        // Update the existing subscription payment record
+        subscriptionPayment.payment_id = razorpay_payment_id;
+        subscriptionPayment.razorpay_subscription_id = razorpay_subscription_id;
+        subscriptionPayment.validity = user.subscription_validity;
+        subscriptionPayment.subscription_type = tier;
+        subscriptionPayment.amount = isCodeApplied ? 0 : amount;
+        subscriptionPayment.isCodeApplied = isCodeApplied;
+        subscriptionPayment.subscription_status = 'active';
         await subscriptionPayment.save();
 
         console.log(`Subscription payment verified for user ${user.user_id}: Plan ${tier}, Coupon Applied: ${isCodeApplied}`);
@@ -579,7 +572,6 @@ router.post('/verify-subscription-payment', authMiddleware, async (req, res) => 
         res.status(500).json({ error: `Failed to verify subscription payment: ${err.message}` });
     }
 });
-
 // POST /webhook: Handle Razorpay webhook events for subscription updates
 router.post('/webhook', async (req, res) => {
     try {

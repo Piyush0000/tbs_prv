@@ -360,6 +360,8 @@ function BookCafeSelectorContent() {
                       distance: cafe.distance || "N/A",
                       rating: cafe.ratings,
                       location: cafe.location,
+                      area: cafe.area || "N/A",
+                      city: cafe.city || "N/A",
                       specialties: cafe.specials,
                       discounts: `${cafe.discount}%`,
                       priceRange: `₹${cafe.average_bill}`,

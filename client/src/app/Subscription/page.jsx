@@ -25,7 +25,7 @@ function MainComponent() {
       image:
         "https://images.unsplash.com/photo-1524578271613-d550eacf6090?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=1950&q=80",
       features: [
-        "Borrow 3 books at a time",
+        "Borrow 1 books at a time",
         "21-day borrowing period",
         "15% discount at partner cafes",
         "Reading community access",
