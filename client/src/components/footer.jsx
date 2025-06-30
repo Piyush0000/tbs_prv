@@ -76,8 +76,8 @@ const Footer = () => {
           </Link>
           <div className="text-text-dark dark:text-text-light font-body text-sm mt-4">
             <p>
-              <a href="mailto:info@thebookshelves.com" className="hover:text-primary-light dark:hover:text-primary-dark transition-colors">
-                Email: info@thebookshelves.com
+              <a href="mailto:thbookshelves@gmail.com" className="hover:text-primary-light dark:hover:text-primary-dark transition-colors">
+                Email: thbookshelves@gmail.com
               </a>
             </p>
           </div>

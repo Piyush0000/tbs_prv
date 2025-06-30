@@ -61,7 +61,7 @@ function MainComponent() {
               </div>
               <div className="md:w-2/3">
                 <img
-                  src="/SignUp.png"
+                  src="/SIgnUp.png"
                   alt="Sign up illustration"
                   className="w-full max-w-md h-full object-contain rounded-xl shadow-sm"
                 />
@@ -121,7 +121,7 @@ function MainComponent() {
               </div>
               <div className="md:w-2/3">
                 <img
-                  src="/Pickup.png"
+                  src="/PickUp.png"
                   alt="Illustration of book pickup process at a cafe"
                   className="w-full max-w-md h-full object-contain rounded-xl shadow-sm"
                 />

@@ -113,7 +113,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
             How it works ?
           </Link>
           <Link
-            href="/about"
+            href="/AboutUs"
             className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
           >
             About
@@ -189,7 +189,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
                 How it works ?
               </Link>
               <Link
-                href="/about"
+                href="/AboutUs"
                 className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                 onClick={toggleMenu}
               >
