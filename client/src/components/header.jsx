@@ -12,12 +12,12 @@ const Header = ({ location, onLocationChange, onSearch }) => {
   };
 
   return (
-    <header className="border-b border-border-light dark:border-border-dark px-2 md:px-8 py-4 bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
-      <div className="w-full sm:w-[80%] mx-auto flex items-center justify-between gap-4">
+    <header className="border-b border-border-light dark:border-border-dark px-2 md:px-8 py-3 bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
+      <div className="w-full sm:w-[80%] mx-auto flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center">
           <Link href="/">
-            <div className="w-12 h-12 cursor-pointer">
+            <div className="w-10 h-10 cursor-pointer">
               <img
                 src="/Logo-Lightmode.png"
                 alt="The Book Shelves Logo"
@@ -73,17 +73,17 @@ const Header = ({ location, onLocationChange, onSearch }) => {
 
         {/* Search Section - Mobile */}
         <div className="flex-1 flex md:hidden items-center">
-          <div className="flex-1 flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-2">
+          <div className="flex-1 flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-1">
             <input
               type="text"
               name="search"
               placeholder="Search..."
-              className="flex-1 text-sm text-text-light dark:text-text-dark outline-none bg-transparent px-3 py-1.5"
+              className="flex-1 text-xs text-text-light dark:text-text-dark outline-none bg-transparent px-2 py-1"
               onChange={onSearch}
             />
             <button
               onClick={onSearch}
-              className="ml-2 p-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+              className="ml-1 p-1 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
               aria-label="Search"
             >
               <svg
@@ -92,7 +92,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
                 viewBox="0 0 24 24"
                 strokeWidth={2}
                 stroke="currentColor"
-                className="w-5 h-5"
+                className="w-4 h-4"
               >
                 <path
                   strokeLinecap="round"
@@ -105,7 +105,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="hidden md:flex items-center gap-6">
           <Link
             href="/how-it-works"
             className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
@@ -113,8 +113,14 @@ const Header = ({ location, onLocationChange, onSearch }) => {
             How it works ?
           </Link>
           <Link
-            href="/discover"
+            href="/about"
             className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+          >
+            About
+          </Link>
+          <Link
+            href="/discover"
+            className="text-text-light339 dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
           >
             Discover
           </Link>
@@ -151,7 +157,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
         <div className="md:hidden flex items-center">
           <button
             onClick={toggleMenu}
-            className="w-8 h-10 flex items-center justify-center"
+            className="w-8 h-8 flex items-center justify-center"
             aria-label="Toggle menu"
           >
             <svg
@@ -160,7 +166,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className="w-6 h-6 text-text-light dark:text-text-dark"
+              className="w-5 h-5 text-text-light dark:text-text-dark"
             >
               <path
                 strokeLinecap="round"
@@ -173,18 +179,25 @@ const Header = ({ location, onLocationChange, onSearch }) => {
 
         {/* Mobile Dropdown Menu */}
         {isMenuOpen && (
-          <div className="absolute top-16 left-0 w-full bg-background-light dark:bg-background-dark border-b border-border-light dark:border-border-dark md:hidden z-50">
-            <nav className="flex flex-col p-4">
+          <div className="absolute top-14 left-0 w-full bg-background-light dark:bg-background-dark border-b border-border-light dark:border-border-dark md:hidden z-50">
+            <nav className="flex flex-col p-3">
               <Link
                 href="/how-it-works"
-                className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                 onClick={toggleMenu}
               >
                 How it works ?
               </Link>
               <Link
+                href="/about"
+                className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                onClick={toggleMenu}
+              >
+                About
+              </Link>
+              <Link
                 href="/discover"
-                className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                 onClick={toggleMenu}
               >
                 Discover
@@ -193,14 +206,14 @@ const Header = ({ location, onLocationChange, onSearch }) => {
                 <>
                   <Link
                     href="/profile"
-                    className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                    className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                     onClick={toggleMenu}
                   >
                     Profile
                   </Link>
                   <Link
                     href="/auth/logout"
-                    className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                    className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                     onClick={toggleMenu}
                   >
                     Log out
@@ -209,7 +222,7 @@ const Header = ({ location, onLocationChange, onSearch }) => {
               ) : (
                 <Link
                   href="/auth/signin"
-                  className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
+                  className="py-1.5 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark font-header"
                   onClick={toggleMenu}
                 >
                   Log in

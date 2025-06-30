@@ -35,7 +35,7 @@ const Footer = () => {
           {/* Contact Info (desktop only) */}
           <div className="hidden sm:block sm:text-right sm:w-[45%]">
             <div className="text-text-dark dark:text-text-light font-body text-base">
-              <p>Email: info@thebookshelves.com</p>
+              <p>Email: thbookshelves@gmail.com</p>
             </div>
             <div className="flex space-x-4 mt-4 justify-end text-text-dark dark:text-text-light">
               <a
@@ -49,7 +49,7 @@ const Footer = () => {
               <a
                 href="https://www.instagram.com/th_bookshelves"
                 target="_blank"
-                rel ="noopener noreferrer"
+                rel="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
               >
                 <span>IG</span>
@@ -75,30 +75,37 @@ const Footer = () => {
             Contact
           </Link>
           <div className="text-text-dark dark:text-text-light font-body text-sm mt-4">
-            <p>Email: info@thebookshelves.com</p>
+            <p>
+              <a href="mailto:info@thebookshelves.com" className="hover:text-primary-light dark:hover:text-primary-dark transition-colors">
+                Email: info@thebookshelves.com
+              </a>
+            </p>
           </div>
           <div className="flex space-x-4 mt-4 text-text-dark dark:text-text-light">
             <a
               href="https://facebook.com/thebookshelves"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              aria-label="Facebook"
             >
               <span>FB</span>
             </a>
             <a
-              href="https://instagram.com/thebookshelves"
+              href="https://www.instagram.com/th_bookshelves"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              aria-label="Instagram"
             >
               <span>IG</span>
             </a>
             <a
-              href="https://linkedin.com/company/thebookshelves"
+              href="https://www.linkedin.com/company/th-bookshelves/"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              aria-label="LinkedIn"
             >
               <span>LI</span>
             </a>
@@ -107,28 +114,28 @@ const Footer = () => {
 
         {/* Row 3: Links */}
         <div className="flex justify-between items-center pt-8 border-t border-border-light dark:border-border-dark">
-  {/* Left Links */}
-  <div className="flex flex-row space-x-8 items-center">
-    <Link
-      href="/how-it-works"
-      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-    >
-      How it works?
-    </Link>
-    <Link
-      href="/TnC"
-      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-    >
-      Terms of Use
-    </Link>
-    <Link
-      href="/Subscription"
-      className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
-    >
-      Subscription
-    </Link>
-  </div>
-</div>
+          {/* Left Links */}
+          <div className="flex flex-row space-x-8 items-center">
+            <Link
+              href="/how-it-works"
+              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+            >
+              How it works?
+            </Link>
+            <Link
+              href="/TnC"
+              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+            >
+              Terms of Use
+            </Link>
+            <Link
+              href="/Subscription"
+              className="text-text-dark dark:text-text-light font-body text-sm sm:text-base hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+            >
+              Subscription
+            </Link>
+          </div>
+        </div>
       </div>
     </footer>
   );

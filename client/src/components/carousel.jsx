@@ -6,45 +6,44 @@ import { useAuth } from "../app/Hooks/useAuth";
 
 const Carousel = ({ title, description, buttonText, images }) => {
   const [isMobile, setIsMobile] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const { isLoggedIn } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    let timeoutId;
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setIsMobile(window.innerWidth < 768), 100);
+    };
     handleResize();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   const maxRightShift = isMobile ? 0 : 20;
-  let dynamicRightShift = 0;
-  if (!isMobile) {
-    dynamicRightShift =
-      images.length === 1
-        ? maxRightShift
-        : (maxRightShift / images.length) * 1.7;
-  }
+  const dynamicRightShift = isMobile ? 0 : Math.min(maxRightShift, images.length * 10);
 
   const handleLinkClick = (e, href) => {
     console.log(`Link clicked: href=${href}, isLoggedIn=${isLoggedIn}`);
-    // Prevent default only for anchor links on the same page
     if (href.startsWith("/discover#") && window.location.pathname === "/discover") {
       e.preventDefault();
-      const sectionId = href.split("#")[1]; // e.g., "books" or "cafes"
+      const sectionId = href.split("#")[1];
       const element = document.getElementById(sectionId);
       if (element) {
         const headerHeight = document.querySelector("header")?.offsetHeight || 80;
         const yOffset = -headerHeight;
         const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
         window.scrollTo({ top: y, behavior: "smooth" });
-        // Update URL without reloading
         window.history.pushState(null, "", href);
       } else {
         console.warn(`Section with id="${sectionId}" not found`);
-        router.push(href); // Fallback to full navigation
+        router.push(href);
       }
     } else {
-      // Let Link handle navigation for different pages
       router.push(href);
     }
   };
@@ -65,13 +64,17 @@ const Carousel = ({ title, description, buttonText, images }) => {
 
   const href = getLinkHref();
 
+  const handleDotClick = (index) => {
+    setCurrentIndex(index);
+  };
+
   return (
-    <div className="flex flex-col md:flex-row items-center justify-between">
-      <div className="w-full md:w-[70%] pr-0 md:pr-32 mb-2 md:mb-0 relative z-10">
+    <div className="flex flex-col md:flex-row items-center justify-between min-h-[90vh] md:min-h-0">
+      <div className="w-full md:w-[70%] pr-0 md:pr-32 mb-4 md:mb-0 relative z-10">
         <h1 className="text-4xl md:text-5xl font-header text-text-light dark:text-text-dark mb-4">
           {title}
         </h1>
-        <p className="text-textscd-light dark:text-textscd-dark font-body mb-6">
+        <p className="text-textscd-light dark:text-textscd-dark font-body mb-6 text-base md:text-lg">
           {description}
         </p>
         <Link
@@ -84,46 +87,49 @@ const Carousel = ({ title, description, buttonText, images }) => {
       </div>
 
       <div
-        className="relative w-full md:w-[30%] h-[300px] md:h-[400px] flex items-center mt-8 md:mt-0"
+        className="relative w-full md:w-[30%] h-[340px] md:h-[400px] flex flex-col items-center mt-8 md:mt-0"
         style={{
-          transform: isMobile ? "none" : `translateX(${-dynamicRightShift}px)`,
+          transform: `translateX(${-dynamicRightShift}px)`,
         }}
       >
         {isMobile ? (
-          <div
-            className="relative"
-            style={{
-              width: `${220 + (images.length - 1) * (50 - 30)}px`,
-              margin: "0 auto",
-              height: "300px",
-            }}
-          >
-            {images.map((image, index) => {
-              const baseWidth = 220;
-              const widthReduction = 30;
-              const leftShift = 50;
-              const verticalShift = 15;
-
-              const width = baseWidth - index * widthReduction;
-              const left = index * leftShift;
-              const top = index * verticalShift;
-
-              return (
-                <img
+          <>
+            <div
+              className="relative"
+              style={{
+                width: "220px",
+                height: "300px",
+                margin: "0 auto",
+              }}
+            >
+              <img
+                src={images[currentIndex]}
+                alt={`Book cover ${currentIndex + 1}`}
+                className="absolute rounded-lg shadow-lg pointer-events-none object-contain"
+                style={{
+                  width: "220px",
+                  height: "300px",
+                  left: "0",
+                  top: "0",
+                  zIndex: images.length,
+                }}
+              />
+            </div>
+            <div className="flex justify-center mt-4 space-x-2">
+              {images.map((_, index) => (
+                <button
                   key={index}
-                  src={image}
-                  alt={`Book cover ${index + 1}`}
-                  className="absolute rounded-lg shadow-lg pointer-events-none"
-                  style={{
-                    width: `${width}px`,
-                    left: `${left}px`,
-                    top: `${top}px`,
-                    zIndex: images.length - index,
-                  }}
+                  onClick={() => handleDotClick(index)}
+                  className={`w-3 h-3 rounded-full transition-colors ${
+                    currentIndex === index
+                      ? "bg-primary-light dark:bg-primary-dark"
+                      : "bg-border-light dark:bg-border-dark"
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
                 />
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          </>
         ) : (
           images.map((image, index) => {
             const baseWidth = 280;
