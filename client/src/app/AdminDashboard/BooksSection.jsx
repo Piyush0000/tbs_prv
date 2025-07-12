@@ -13,6 +13,7 @@ function BooksSection({ data, setData, onEdit }) {
   const [publisherFilter, setPublisherFilter] = useState("");
   const [languageFilter, setLanguageFilter] = useState("");
   const [authorFilter, setAuthorFilter] = useState("");
+  const [keeperIdFilter, setKeeperIdFilter] = useState("");
 
   const scrollRef = useRef(null);
   const isDown = useRef(false);
@@ -24,6 +25,7 @@ function BooksSection({ data, setData, onEdit }) {
   const uniquePublishers = [...new Set(data.map((book) => book.publisher).filter(Boolean))];
   const uniqueLanguages = [...new Set(data.map((book) => book.language).filter(Boolean))];
   const uniqueAuthors = [...new Set(data.map((book) => book.author).filter(Boolean))];
+  const uniqueKeeperIds = [...new Set(data.map((book) => book.keeper_id).filter(Boolean))];
 
   // Filter books based on search query and filters
   const filteredData = (data || []).filter((book) => {
@@ -50,6 +52,7 @@ function BooksSection({ data, setData, onEdit }) {
     const matchesPublisher = publisherFilter ? book.publisher === publisherFilter : true;
     const matchesLanguage = languageFilter ? book.language === languageFilter : true;
     const matchesAuthor = authorFilter ? book.author === authorFilter : true;
+    const matchesKeeperId = keeperIdFilter ? book.keeper_id === keeperIdFilter : true;
 
     return (
       matchesSearch &&
@@ -59,7 +62,8 @@ function BooksSection({ data, setData, onEdit }) {
       matchesGenre &&
       matchesPublisher &&
       matchesLanguage &&
-      matchesAuthor
+      matchesAuthor &&
+      matchesKeeperId
     );
   });
 
@@ -238,6 +242,20 @@ function BooksSection({ data, setData, onEdit }) {
             ))}
           </select>
         </div>
+        <div className="flex-1 min-w-[150px]">
+         <select
+          value={keeperIdFilter}
+           onChange={(e) => setKeeperIdFilter(e.target.value)}
+           className="w-full px-4 py-2 border rounded-lg"
+         >
+           <option value="">Filter by Keeper ID</option>
+          {uniqueKeeperIds.map((keeperId) => (
+          <option key={keeperId} value={keeperId}>
+            {keeperId}
+          </option>
+       ))}
+       </select>
+      </div>
       </div>
 
       <div
