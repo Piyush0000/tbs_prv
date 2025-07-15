@@ -121,7 +121,7 @@ function TheBookShelves() {
       title: "Explore Cafes near you",
       description:
         "Whether you're in Salt Lake, Gariahat, or Park Street, a shelf full of stories is just around the corner.",
-      images: ["/book1.png", "/book2.png"],
+      images: ["/book2.png", "/book3.png", "/book5.png"],
       buttonText: "Discover Now",
     },
     {
@@ -129,7 +129,7 @@ function TheBookShelves() {
       title: "Read the book your friends are talking about",
       description:
         "Genres range from thrillers to business to romance. Choose your favourite, sip your coffee, and enjoy real reading time.",
-      images: ["/book1.png", "/book2.png", "/book3.png"],
+      images: ["/book5.png", "/book6.png", "/book1.png"],
       buttonText: "Read Now",
     },
   ];
