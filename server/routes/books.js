@@ -67,7 +67,7 @@ router.get('/filters', async (req, res) => {
     const publishers = await Book.distinct('publisher');
     const genres = await Book.distinct('genre');
     const languages = await Book.distinct('language');
-    const keeperIds = await Book.distinct('keeper_id').filter(id => id);
+    const keeperIds = (await Book.distinct('keeper_id')).filter(id => id);
 
     res.status(200).json({ authors, publishers, genres, languages, keeperIds });
   } catch (err) {
