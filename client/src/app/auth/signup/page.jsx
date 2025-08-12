@@ -67,7 +67,7 @@ function MainComponent() {
       const idToken = await userCredential.user.getIdToken();
 
       // Call backend to check if phone number is required
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/email-signup`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

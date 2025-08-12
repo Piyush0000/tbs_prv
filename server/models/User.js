@@ -14,6 +14,15 @@ const userSchema = new mongoose.Schema({
     deposit_status: { type: String, enum: ['n/a', 'deposited', 'refunded'], default: 'n/a' },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
+    gender: { type: String, enum: ['male', 'female', 'other'] },
+    state: String,
+    district: String,
+    pincode: String,
+    isVerified: { type: Boolean, default: false },
+    otp: String,
+    otpExpires: Date,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
 });
 
 userSchema.pre('save', async function (next) {

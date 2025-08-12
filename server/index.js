@@ -23,7 +23,6 @@ console.log('RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET);
 console.log('RAZORPAY_WEBHOOK_SECRET:', process.env.RAZORPAY_WEBHOOK_SECRET);
 console.log('JWT_SECRET:', process.env.JWT_SECRET);
 console.log('MONGODB_URI:', process.env.MONGODB_URI);
-console.log('FIREBASE_SERVICE_ACCOUNT_KEY:', process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
 
 // Validate critical environment variables
 if (!process.env.JWT_SECRET) {
@@ -35,13 +34,11 @@ if (!process.env.MONGODB_URI) {
     process.exit(1);
 }
 if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET || !process.env.RAZORPAY_WEBHOOK_SECRET) {
-    console.error('FATAL ERROR: Razorpay credentials (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET) are not defined in environment variables');
+    console.error('FATAL ERROR: Razorpay credentials are not fully defined in environment variables');
     process.exit(1);
 }
-if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-    console.error('FATAL ERROR: FIREBASE_SERVICE_ACCOUNT_KEY is not defined in environment variables');
-    process.exit(1);
-}
+
+// REMOVED: The check for FIREBASE_SERVICE_ACCOUNT_KEY has been removed.
 
 const app = express();
 
@@ -65,24 +62,25 @@ app.use((req, res, next) => {
     next();
 });
 
-// Rate limiting for sensitive routes
+// CHANGED: Updated rate limiting to match your request.
+const generalLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 100, // Limit each IP to 100 requests per minute
+    message: 'Too many requests from this IP, please try again after a minute',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per window
-    message: 'Too many requests from this IP, please try again after 15 minutes',
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 50, // Limit each IP to 50 requests per minute for auth routes
+    message: 'Too many authentication attempts from this IP, please try again after a minute',
+    standardHeaders: true,
+    legacyHeaders: false,
 });
 
-const adminLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // Limit each IP to 50 requests per window (admin routes are more sensitive)
-    message: 'Too many requests from this IP, please try again after 15 minutes',
-});
-
-const transactionLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // Limit each IP to 200 requests per window
-    message: 'Too many requests from this IP, please try again after 15 minutes',
-});
+// Apply the general rate limiter to all API routes
+app.use('/api/', generalLimiter);
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -93,14 +91,15 @@ mongoose.connect(process.env.MONGODB_URI, {
         console.log('MongoDB connected');
 
         // Register routes after MongoDB connection is confirmed
-        app.use('/api/auth', authLimiter, authRoutes);
+        // The stricter authLimiter will apply only to the /api/auth route
+        app.use('/api/auth', authLimiter, authRoutes); 
         app.use('/api/users', userRoutes);
-        app.use('/api/transactions', transactionLimiter, transactionRoutes);
+        app.use('/api/transactions', transactionRoutes);
         app.use('/api/books', bookRoutes);
         app.use('/api/cafes', cafeRoutes);
         app.use('/api/cafe', cafePortalRoutes);
         app.use('/api/client', clientPortalRoutes);
-        app.use('/api/admin', adminLimiter, adminPortalRoutes);
+        app.use('/api/admin', adminPortalRoutes);
 
         // Global error handler
         app.use((err, req, res, next) => {
