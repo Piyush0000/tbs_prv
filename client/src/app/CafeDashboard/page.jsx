@@ -4,19 +4,19 @@ import { useAuth } from "../Hooks/useAuth";
 import QRScanner from "../scanner/page";
 
 function CafeDashboard() {
+  // ... (all your existing state and hooks are unchanged)
   const { user, setUser, refreshToken } = useAuth();
   const [cafeDetails, setCafeDetails] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [error, setError] = useState(null);
-
   const [editForm, setEditForm] = useState({ name: "", discount: "" });
   const [isEditing, setIsEditing] = useState(false);
-
   const hasFetchedUserAndCafe = useRef(false);
   const isProcessingScan = useRef(false);
 
+  // ... (all your existing functions like fetchUserAndCafeData, fetchTransactions, handleSave, etc. are unchanged)
   const fetchUserAndCafeData = useCallback(async () => {
     let token = localStorage.getItem("token");
     if (!token) {
@@ -356,6 +356,23 @@ function CafeDashboard() {
     }
   };
 
+
+  const handleImport = () => {
+    // This is a placeholder. You can implement file selection and parsing logic here.
+    console.log("Import button clicked.");
+    alert("Import functionality is not yet implemented.");
+  };
+
+  const handleExport = () => {
+    // This is a placeholder. You can implement logic to convert `transactions` to CSV and download.
+    console.log("Export button clicked with data:", transactions);
+    if (transactions.length === 0) {
+      alert("No transaction data to export.");
+      return;
+    }
+    alert("Export functionality is not yet implemented.");
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (error) return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>;
   if (!cafeDetails) return <div className="min-h-screen flex items-center justify-center">No cafe data available.</div>;
@@ -369,8 +386,11 @@ function CafeDashboard() {
             <a href="/auth/logout">Log Out</a>
           </button>
         </div>
+        
+        {/* Cafe Details Card - unchanged */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-4">Cafe Details</h2>
+            {/* ... all the cafe details JSX is here, unchanged ... */}
+            <h2 className="text-2xl font-bold mb-4">Cafe Details</h2>
           <div className="space-y-2">
             <p><span className="font-semibold">Cafe ID:</span> {cafeDetails.cafe_id}</p>
             <p><span className="font-semibold">Location:</span> {cafeDetails.location}</p>
@@ -429,16 +449,35 @@ function CafeDashboard() {
           </div>
         </div>
 
+        {/* Transactions Card */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+          {/* --- START: CORRECTED SECTION --- */}
+          <div className="flex items-center mb-4">
             <h2 className="text-2xl font-bold">Pending Transactions</h2>
-            <button
-              onClick={() => setShowScannerModal(true)}
-              className="px-4 py-2 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-            >
-              Approve Transaction
-            </button>
+            {/* This div groups the buttons and pushes them to the right */}
+            <div className="ml-auto flex items-center space-x-2">
+              <button
+                onClick={handleImport}
+                className="px-4 py-2 rounded-full bg-gray-500 text-white hover:bg-gray-600 text-sm font-medium"
+              >
+                Import
+              </button>
+              <button
+                onClick={handleExport}
+                className="px-4 py-2 rounded-full bg-gray-500 text-white hover:bg-gray-600 text-sm font-medium"
+              >
+                Export
+              </button>
+              <button
+                onClick={() => setShowScannerModal(true)}
+                className="px-4 py-2 rounded-full bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Approve Transaction
+              </button>
+            </div>
           </div>
+          {/* --- END: CORRECTED SECTION --- */}
+          
           <div
             className="overflow-x-auto cursor-grab"
             ref={tableRef}
@@ -447,6 +486,7 @@ function CafeDashboard() {
             onMouseUp={handleMouseUp}
             onMouseMove={handleMouseMove}
           >
+            {/* ... Transaction table JSX is here, unchanged ... */}
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 whitespace-nowrap">
@@ -482,6 +522,7 @@ function CafeDashboard() {
           </div>
         </div>
 
+        {/* ... (Scanner Modal and style tag are unchanged) ... */}
         {showScannerModal && (
           <div
             className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
@@ -510,7 +551,6 @@ function CafeDashboard() {
             </div>
           </div>
         )}
-
         <style jsx>{`
           .dragging {
             user-select: none;
