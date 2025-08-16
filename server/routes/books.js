@@ -2,82 +2,100 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const Book = require('../models/Book');
-const User = require('../models/User');
+const User = require('../models/User'); // Still needed for admin check
+
+// ===================================================================================
+// MIDDLEWARE (Assuming these are now in a central /middleware folder)
+// ===================================================================================
+
+// Note: For this example, the middleware is included here. 
+// In your project, you should move these to a separate file (e.g., /middleware/auth.js) and import them.
 const jwt = require('jsonwebtoken');
 
-// Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
-  console.log('Received token in authMiddleware:', token); // Debug log
   if (!token) {
-    console.log('No token provided');
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
   }
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Decoded token in authMiddleware:', decoded); // Debug log
     req.userId = decoded.id;
     next();
   } catch (err) {
-    console.error('Token verification failed in authMiddleware:', err.message); // Debug log
     res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-// Middleware to check admin role
 const adminMiddleware = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId);
     if (!user || user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
     next();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Server error while verifying admin role' });
   }
 };
 
-// GET /api/books - Retrieve list of books with case-insensitive filtering (no auth required)
-router.get('/', async (req, res) => {
+
+// ===================================================================================
+// VALIDATION RULES
+// ===================================================================================
+
+const bookValidationRules = [
+    body('name').notEmpty().withMessage('Name is required').trim(),
+    body('author').notEmpty().withMessage('Author is required').trim(),
+    body('language').notEmpty().withMessage('Language is required').trim(),
+    body('ratings').optional().isInt({ min: 0, max: 5 }).withMessage('Ratings must be an integer between 0 and 5'),
+];
+
+
+// ===================================================================================
+// CONTROLLER FUNCTIONS
+// ===================================================================================
+
+/**
+ * Controller to get a list of all books with optional filters.
+ */
+const getAllBooks = async (req, res) => {
   try {
-    const { genre, author, language, name, keeper_id, available, hasAudio, hasDownload } = req.query;
+    const { genre, author, language, name, available } = req.query; // Simplified filters from original
     let query = {};
 
     if (genre) query.genre = { $regex: genre, $options: 'i' };
     if (author) query.author = { $regex: author, $options: 'i' };
     if (language) query.language = { $regex: language, $options: 'i' };
     if (name) query.name = { $regex: name, $options: 'i' };
-    if (keeper_id) query.keeper_id = keeper_id;
     if (available) query.available = available === 'true';
-    if (hasAudio === 'true') query.audio_url = { $ne: null, $exists: true }; // Filter books with non-null audio_url
-    if (hasDownload === 'true') query.pdf_url = { $ne: null, $exists: true }; // Filter books with non-null pdf_url
 
     const books = await Book.find(query);
     res.status(200).json(books);
   } catch (err) {
     console.error('Error fetching books:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to fetch books' });
   }
-});
+};
 
-// GET /api/books/filters - Retrieve unique values for filters (no auth required)
-router.get('/filters', async (req, res) => {
+/**
+ * Controller to get unique values for filter dropdowns.
+ */
+const getBookFilters = async (req, res) => {
   try {
     const authors = await Book.distinct('author');
-    const publishers = await Book.distinct('publisher');
     const genres = await Book.distinct('genre');
     const languages = await Book.distinct('language');
-    const keeperIds = (await Book.distinct('keeper_id')).filter(id => id);
-
-    res.status(200).json({ authors, publishers, genres, languages, keeperIds });
+    res.status(200).json({ authors, genres, languages });
   } catch (err) {
     console.error('Error fetching filters:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to fetch filters' });
   }
-});
+};
 
-// GET /api/books/:book_id - Retrieve a specific book (no auth required)
-router.get('/:book_id', async (req, res) => {
+/**
+ * Controller to get a single book by its public book_id.
+ */
+const getBookById = async (req, res) => {
   try {
     const { book_id } = req.params;
     const book = await Book.findOne({ book_id });
@@ -86,152 +104,143 @@ router.get('/:book_id', async (req, res) => {
     }
     res.status(200).json(book);
   } catch (err) {
-    console.error('Error fetching book:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error(`Error fetching book ${req.params.book_id}:`, err.message);
+    res.status(500).json({ error: 'Failed to fetch book' });
   }
-});
+};
 
-// POST /api/books - Create a new book (admin-only)
-router.post(
-  '/',
-  authMiddleware,
-  adminMiddleware,
-  [
-    body('name').notEmpty().withMessage('name is required').trim(),
-    body('author').notEmpty().withMessage('author is required').trim(),
-    body('language').notEmpty().withMessage('language is required').trim(),
-    body('ratings').optional().isInt({ min: 0, max: 5 }).withMessage('ratings must be between 0 and 5'),
-  ],
-  async (req, res) => {
+/**
+ * [NEW] Controller for the QR Scanner workflow to look up a book by its ID.
+ */
+const getBookDetailsForScanner = async (req, res) => {
+    try {
+        const { bookId } = req.params;
+        const book = await Book.findOne({ book_id: bookId });
+        if (!book) {
+            return res.status(404).json({ message: 'Book not found' });
+        }
+        res.status(200).json(book);
+    } catch (error) {
+        console.error(`Error fetching book details for scanner: ${error.message}`);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+/**
+ * Controller to create a new book. Admin only.
+ */
+const createBook = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
     try {
-      const {
-        name,
-        author,
-        language,
-        publisher,
-        genre,
-        description,
-        image_url,
-        audio_url,
-        pdf_url,
-        ratings,
-        is_free,
-        available,
-        keeper_id,
-      } = req.body;
-
-      const book = new Book({
-        name,
-        author,
-        language,
-        publisher,
-        genre,
-        description,
-        image_url,
-        audio_url,
-        pdf_url,
-        ratings: ratings || 0,
-        is_free: is_free || false,
-        available: available !== undefined ? available : true,
-        keeper_id: keeper_id || null,
-      });
-
-      await book.save();
-      res.status(201).json({ message: 'Book created successfully', book });
+      const newBook = new Book(req.body);
+      await newBook.save();
+      res.status(201).json({ message: 'Book created successfully', book: newBook });
     } catch (err) {
       console.error('Error creating book:', err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Failed to create book' });
     }
-  }
-);
+};
 
-// PUT /api/books/:book_id - Update a book (admin-only)
-router.put(
-  '/:book_id',
-  authMiddleware,
-  adminMiddleware,
-  [
-    body('name').notEmpty().withMessage('name is required').trim(),
-    body('author').notEmpty().withMessage('author is required').trim(),
-    body('language').notEmpty().withMessage('language is required').trim(),
-    body('ratings').optional().isInt({ min: 0, max: 5 }).withMessage('ratings must be between 0 and 5'),
-  ],
-  async (req, res) => {
+/**
+ * Controller to update an existing book. Admin only.
+ */
+const updateBook = async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     try {
       const { book_id } = req.params;
-      const {
-        name,
-        author,
-        language,
-        publisher,
-        genre,
-        description,
-        image_url,
-        audio_url,
-        pdf_url,
-        ratings,
-        is_free,
-        available,
-        keeper_id,
-      } = req.body;
+      const updatedBook = await Book.findOneAndUpdate({ book_id }, req.body, { new: true });
 
-      const book = await Book.findOne({ book_id });
-      if (!book) {
+      if (!updatedBook) {
         return res.status(404).json({ error: 'Book not found' });
       }
 
-      book.name = name;
-      book.author = author;
-      book.language = language;
-      book.publisher = publisher !== undefined ? publisher : book.publisher;
-      book.genre = genre !== undefined ? genre : book.genre;
-      book.description = description !== undefined ? description : book.description;
-      book.image_url = image_url !== undefined ? image_url : book.image_url;
-      book.audio_url = audio_url !== undefined ? audio_url : book.audio_url;
-      book.pdf_url = pdf_url !== undefined ? pdf_url : book.pdf_url;
-      book.ratings = ratings !== undefined ? ratings : book.ratings;
-      book.is_free = is_free !== undefined ? is_free : book.is_free;
-      book.available = available !== undefined ? available : book.available;
-      book.keeper_id = keeper_id !== undefined ? keeper_id : book.keeper_id;
-      book.updatedAt = Date.now();
-
-      await book.save();
-      console.log('Book updated:', book);
-      res.status(200).json({ message: 'Book updated successfully', book });
+      res.status(200).json({ message: 'Book updated successfully', book: updatedBook });
     } catch (err) {
-      console.error('Error updating book:', err.message);
-      res.status(500).json({ error: 'Failed to update book: ' + err.message });
+      console.error(`Error updating book ${req.params.book_id}:`, err.message);
+      res.status(500).json({ error: 'Failed to update book' });
     }
-  }
-);
+};
 
-// DELETE /api/books/:book_id - Delete a book (admin-only)
-router.delete('/:book_id', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { book_id } = req.params;
-    const book = await Book.findOne({ book_id });
-    if (!book) {
-      return res.status(404).json({ error: 'Book not found' });
+/**
+ * Controller to delete a book. Admin only.
+ */
+const deleteBook = async (req, res) => {
+    try {
+        const { book_id } = req.params;
+        const deletedBook = await Book.findOneAndDelete({ book_id });
+
+        if (!deletedBook) {
+            return res.status(404).json({ error: 'Book not found' });
+        }
+
+        res.status(200).json({ message: 'Book deleted successfully' });
+    } catch (err) {
+        console.error(`Error deleting book ${req.params.book_id}:`, err.message);
+        res.status(500).json({ error: 'Failed to delete book' });
     }
+};
 
-    await book.deleteOne();
-    console.log(`Book deleted: ${book_id}`);
-    res.status(200).json({ message: 'Book deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting book:', err.message);
-    res.status(500).json({ error: 'Failed to delete book: ' + err.message });
-  }
-});
+
+// ===================================================================================
+// ROUTES
+// ===================================================================================
+
+/**
+ * @route   GET /api/books
+ * @desc    Retrieve list of books with optional filters
+ * @access  Public
+ */
+router.get('/', getAllBooks);
+
+/**
+ * @route   GET /api/books/filters
+ * @desc    Retrieve unique values for filters
+ * @access  Public
+ */
+router.get('/filters', getBookFilters);
+
+/**
+ * @route   GET /api/books/details/:bookId
+ * @desc    [NEW] Retrieve book details for QR scanner workflow
+ * @access  Authenticated Users (or Public, depending on your needs)
+ */
+router.get('/details/:bookId', getBookDetailsForScanner);
+
+/**
+ * @route   GET /api/books/:book_id
+ * @desc    Retrieve a specific book by its public ID
+ * @access  Public
+ */
+router.get('/:book_id', getBookById);
+
+/**
+ * @route   POST /api/books
+ * @desc    Create a new book
+ * @access  Admin
+ */
+router.post('/', authMiddleware, adminMiddleware, bookValidationRules, createBook);
+
+/**
+ * @route   PUT /api/books/:book_id
+ * @desc    Update a book
+ * @access  Admin
+ */
+router.put('/:book_id', authMiddleware, adminMiddleware, bookValidationRules, updateBook);
+
+/**
+ * @route   DELETE /api/books/:book_id
+ * @desc    Delete a book
+ * @access  Admin
+ */
+router.delete('/:book_id', authMiddleware, adminMiddleware, deleteBook);
+
 
 module.exports = router;
