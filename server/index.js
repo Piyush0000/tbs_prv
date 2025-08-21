@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const path = require('path'); // Import the 'path' module
 const logger = require('./utils/logger');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
@@ -13,32 +14,27 @@ const cafePortalRoutes = require('./routes/cafePortal');
 const clientPortalRoutes = require('./routes/clientPortal');
 const adminPortalRoutes = require('./routes/adminPortal');
 
-// Load environment variables from .env file
-require('dotenv').config();
+// --- FIX: Robust path to the .env file ---
+// This now correctly points to the .env file inside the 'server' directory
+dotenv.config({ path: path.resolve(__dirname, './.env') });
 
-// Debug: Log environment variables to verify they are loaded
-console.log('Environment Variables:');
-console.log('RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID);
-console.log('RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET);
-console.log('RAZORPAY_WEBHOOK_SECRET:', process.env.RAZORPAY_WEBHOOK_SECRET);
-console.log('JWT_SECRET:', process.env.JWT_SECRET);
-console.log('MONGODB_URI:', process.env.MONGODB_URI);
+
+// Debug: Log all environment variables to verify they are loaded
+console.log('--- Environment Variables Loaded ---');
+console.log('RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID ? 'Loaded' : 'MISSING');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Loaded' : 'MISSING');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'Loaded' : 'MISSING');
+// --- ADDED: Specific logs for email credentials ---
+console.log('EMAIL_USER:', process.env.EMAIL_USER ? process.env.EMAIL_USER : 'MISSING');
+console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'Loaded' : 'MISSING');
+console.log('------------------------------------');
+
 
 // Validate critical environment variables
-if (!process.env.JWT_SECRET) {
-    console.error('FATAL ERROR: JWT_SECRET is not defined in environment variables');
+if (!process.env.JWT_SECRET || !process.env.MONGODB_URI || !process.env.RAZORPAY_KEY_ID || !process.env.EMAIL_USER) {
+    console.error('FATAL ERROR: One or more critical environment variables are not defined. Please check your .env file.');
     process.exit(1);
 }
-if (!process.env.MONGODB_URI) {
-    console.error('FATAL ERROR: MONGODB_URI is not defined in environment variables');
-    process.exit(1);
-}
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET || !process.env.RAZORPAY_WEBHOOK_SECRET) {
-    console.error('FATAL ERROR: Razorpay credentials are not fully defined in environment variables');
-    process.exit(1);
-}
-
-// REMOVED: The check for FIREBASE_SERVICE_ACCOUNT_KEY has been removed.
 
 const app = express();
 
@@ -62,24 +58,22 @@ app.use((req, res, next) => {
     next();
 });
 
-// CHANGED: Updated rate limiting to match your request.
 const generalLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 100, // Limit each IP to 100 requests per minute
+    windowMs: 1 * 60 * 1000,
+    max: 100,
     message: 'Too many requests from this IP, please try again after a minute',
     standardHeaders: true,
     legacyHeaders: false,
 });
 
 const authLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 50, // Limit each IP to 50 requests per minute for auth routes
+    windowMs: 1 * 60 * 1000,
+    max: 50,
     message: 'Too many authentication attempts from this IP, please try again after a minute',
     standardHeaders: true,
     legacyHeaders: false,
 });
 
-// Apply the general rate limiter to all API routes
 app.use('/api/', generalLimiter);
 
 // MongoDB Connection
@@ -90,8 +84,7 @@ mongoose.connect(process.env.MONGODB_URI, {
     .then(async () => {
         console.log('MongoDB connected');
 
-        // Register routes after MongoDB connection is confirmed
-        // The stricter authLimiter will apply only to the /api/auth route
+        // Register routes
         app.use('/api/auth', authLimiter, authRoutes); 
         app.use('/api/users', userRoutes);
         app.use('/api/transactions', transactionRoutes);

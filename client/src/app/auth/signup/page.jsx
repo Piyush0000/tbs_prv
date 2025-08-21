@@ -1,341 +1,368 @@
 "use client";
-import Link from "next/link";
-import { useState } from "react";
-import ThemeToggle from "../../../components/ThemeToggle";
-import { auth, googleProvider, createUserWithEmailAndPassword } from "../../../lib/firebase";
-import { signInWithPopup } from "firebase/auth";
 
-function MainComponent() {
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+import { useState } from "react";
+
+function SignUpPage() {
+  const [step, setStep] = useState('details');
   const [formData, setFormData] = useState({
     name: "",
     phone_number: "",
     email: "",
     password: "",
-    confirmPassword: "",
   });
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
-  const [showPhoneModal, setShowPhoneModal] = useState(false);
-  const [emailPhoneNumber, setEmailPhoneNumber] = useState("");
-  const [emailTempData, setEmailTempData] = useState(null);
-  const [googlePhoneNumber, setGooglePhoneNumber] = useState("");
-  const [googleTempData, setGoogleTempData] = useState(null);
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [canResend, setCanResend] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
   const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Client-side validation
   const validateForm = () => {
-    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
-      return "Please fill in all required fields";
+    if (!formData.name.trim()) {
+      setError("Full name is required");
+      return false;
+    }
+    if (!/^\d{10}$/.test(formData.phone_number)) {
+      setError("Phone number must be exactly 10 digits");
+      return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      return "Invalid email format";
+      setError("Please enter a valid email address");
+      return false;
     }
-    if (formData.password.length < 8) {
-      return "Password must be at least 8 characters long";
+    if (formData.password.length < 8 || !/[!@#$%^&*]/.test(formData.password)) {
+      setError("Password must be 8+ characters with at least one special character");
+      return false;
     }
-    if (!/[!@#$%^&*]/.test(formData.password)) {
-      return "Password must contain at least one special character";
-    }
-    if (formData.password !== formData.confirmPassword) {
-      return "Passwords do not match";
-    }
-    return null;
+    return true;
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  // Start countdown timer for resend OTP
+  const startResendTimer = () => {
+    setCanResend(false);
+    setCountdown(60);
+    
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setCanResend(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
-      setLoading(false);
+  // Step 1: Submit user details
+  const handleDetailsSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    // Validate form
+    if (!validateForm()) {
       return;
     }
 
-    try {
-      // Create user with Firebase
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const idToken = await userCredential.user.getIdToken();
-
-      // Call backend to check if phone number is required
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idToken,
-          name: formData.name,
-          email: formData.email.toLowerCase(),
-        }),
-      });
-      const data = await res.json();
-      console.log('Email signup response:', data); // Debug log
-      if (!res.ok) throw new Error(data.message || 'Registration failed');
-
-      // Check if phone number is required
-      if (data.message.includes("Requires phone number")) {
-        setEmailTempData({
-          tempToken: data.tempToken,
-          name: formData.name,
-          email: formData.email.toLowerCase(),
-        });
-        setShowPhoneModal(true);
-      } else {
-        // Existing user or no phone number required
-        localStorage.setItem('token', data.token);
-        window.location.href = '/';
-      }
-    } catch (err) {
-      console.error('Email signup error:', err.message); // Debug log
-      setError(err.message || 'Failed to sign up');
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idToken,
-          name: result.user.displayName,
-          email: result.user.email,
-        }),
-      });
-      const data = await res.json();
-      console.log('Google Sign-In response:', data); // Debug log
-      if (!res.ok) throw new Error(data.message || 'Google Sign-In failed');
-      
-      // Check if user needs to provide phone number
-      if (data.message.includes("Requires phone number")) {
-        // Store temporary token and show phone number modal
-        setGoogleTempData({ tempToken: data.tempToken, name: result.user.displayName, email: result.user.email });
-        setShowPhoneModal(true);
-      } else {
-        // Existing user with phone number, proceed with login
-        localStorage.setItem('token', data.token);
-        window.location.href = '/';
-      }
-    } catch (err) {
-      console.error('Google Sign-In error:', err.message); // Debug log
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    const phoneNumber = emailTempData ? emailPhoneNumber : googlePhoneNumber;
-    const tempData = emailTempData || googleTempData;
-    const endpoint = emailTempData ? '/auth/email-signup/complete' : '/auth/google/complete';
-
-    // Validate phone number
-    if (!/^\d{10}$/.test(phoneNumber)) {
-      setError("Phone number must be 10 digits");
-      return;
-    }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify({
-          tempToken: tempData.tempToken,
-          phone_number: phoneNumber,
+          name: formData.name.trim(),
+          phone_number: formData.phone_number.trim(),
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password
         }),
       });
-      const data = await res.json();
-      console.log('Phone submission response:', data); // Debug log
-      if (!res.ok) throw new Error(data.message || 'Failed to complete registration');
+
+      const data = await response.json();
       
-      // Registration completed successfully, store token and redirect
-      localStorage.setItem('token', data.token);
-      setShowPhoneModal(false);
-      window.location.href = '/';
+      if (!response.ok) {
+        throw new Error(data.message || `Server error: ${response.status}`);
+      }
+      
+      setMessage(data.message || 'OTP sent successfully!');
+      setStep('otp');
+      startResendTimer();
+      
     } catch (err) {
-      console.error('Phone submission error:', err.message); // Debug log
-      setError(err.message);
+      console.error('Signup error:', err);
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const togglePasswordVisibility = (field) => {
-    if (field === "password") {
-      setPasswordVisible(!passwordVisible);
-    } else if (field === "confirmPassword") {
-      setConfirmPasswordVisible(!confirmPasswordVisible);
+  // Step 2: Verify OTP
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    // Validate OTP
+    const cleanOtp = otp.trim();
+    if (!/^\d{6}$/.test(cleanOtp)) {
+      setError("Please enter a valid 6-digit OTP");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup/verify`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          email: formData.email.trim().toLowerCase(), 
+          otp: cleanOtp 
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || `Verification failed: ${response.status}`);
+      }
+
+      // Store token if provided
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      setMessage("Account verified successfully! Redirecting...");
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1500);
+
+    } catch (err) {
+      console.error('OTP verification error:', err);
+      setError(err.message || 'OTP verification failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    setResendLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          email: formData.email.trim().toLowerCase() 
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to resend OTP');
+      }
+
+      setMessage(data.message || "New OTP sent to your email");
+      setOtp("");
+      startResendTimer();
+      
+    } catch (err) {
+      console.error('Resend OTP error:', err);
+      setError(err.message || 'Failed to resend OTP. Please try again.');
+    } finally {
+      setResendLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-background-light dark:bg-background-dark p-4">
-      <div className="w-full lg:w-1/2 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          <h1 className="mb-8 text-center text-3xl font-bold text-text-light dark:text-text-dark">
-            Create Account
-          </h1>
-
-          <form onSubmit={onSubmit} className="space-y-6">
-            <div>
-              <input
-                type="text"
-                name="name"
-                placeholder="Full Name"
-                onChange={handleInputChange}
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
+    <div className="flex min-h-screen w-full items-center justify-center bg-gray-100 p-4">
+      <div className="w-full max-w-md bg-white p-8 rounded-lg shadow-md">
+        
+        {/* Form for User Details */}
+        {step === 'details' && (
+          <>
+            <h1 className="mb-6 text-center text-3xl font-bold text-gray-800">Create Your Account</h1>
+            <form onSubmit={handleDetailsSubmit} className="space-y-4">
+              <input 
+                type="text" 
+                name="name" 
+                placeholder="Full Name" 
+                value={formData.name}
+                onChange={handleInputChange} 
+                required 
+                className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
-            </div>
-            <div>
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                onChange={handleInputChange}
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
+              <input 
+                type="tel" 
+                name="phone_number" 
+                placeholder="Phone Number (10 digits)" 
+                value={formData.phone_number}
+                onChange={(e) => {
+                  // Only allow numbers
+                  const value = e.target.value.replace(/\D/g, '');
+                  if (value.length <= 10) {
+                    setFormData({ ...formData, phone_number: value });
+                  }
+                }}
+                required 
+                className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
-            </div>
-            <div className="relative">
-              <input
-                type={passwordVisible ? "text" : "password"}
-                name="password"
-                placeholder="Password"
-                onChange={handleInputChange}
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
+              <input 
+                type="email" 
+                name="email" 
+                placeholder="Email" 
+                value={formData.email}
+                onChange={handleInputChange} 
+                required 
+                className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility("password")}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-text-light dark:text-text-dark"
-              >
-                {passwordVisible ? "🙈" : "👁️"}
-              </button>
-            </div>
-            <div className="relative">
-              <input
-                type={confirmPasswordVisible ? "text" : "password"}
-                name="confirmPassword"
-                placeholder="Confirm Password"
-                onChange={handleInputChange}
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors"
+              <input 
+                type="password" 
+                name="password" 
+                placeholder="Password (8+ chars with special character)" 
+                value={formData.password}
+                onChange={handleInputChange} 
+                required 
+                className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility("confirmPassword")}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-text-light dark:text-text-dark"
-              >
-                {confirmPasswordVisible ? "🙈" : "👁️"}
-              </button>
-            </div>
-            {error && (
-              <div className="rounded-full bg-warning-light dark:bg-warning-dark p-3 text-sm text-warning-light dark:text-warning-dark">
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-primary-light dark:bg-primary-dark px-4 py-3 text-base font-medium text-text-light dark:text-text-dark transition-colors hover:bg-primary-light dark:hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 disabled:opacity-50"
-            >
-              {loading ? "Creating account..." : "Sign up"}
-            </button>
-          </form>
-          <div className="my-8 flex items-center">
-            <div className="flex-1 border-t border-border-light dark:border-border-dark"></div>
-            <span className="px-4 text-text-light dark:text-text-dark text-sm">Or</span>
-            <div className="flex-1 border-t border-border-light dark:border-border-dark"></div>
-          </div>
-          <div className="space-y-4">
-            <button
-              onClick={handleGoogleSignIn}
-              className="w-full rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark px-4 py-3 text-base font-medium text-text-light dark:text-text-dark transition-colors hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2"
-            >
-              <i className="fab fa-google mr-2"></i>
-              Continue with Google
-            </button>
-            <button className="w-full rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark px-4 py-3 text-base font-medium text-text-light dark:text-text-dark transition-colors hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2">
-              <i className="fab fa-apple mr-2"></i>
-              Continue with Apple
-            </button>
-          </div>
-          <p className="mt-8 text-center text-sm text-text-light dark:text-text-dark">
-            Already have an account?{" "}
-            <Link href="/auth/signin" className="font-medium text-primary-light dark:text-primary-dark hover:text-primary-dark">
-              Sign in
-            </Link>
-          </p>
-        </div>
-      </div>
-      <div className="hidden lg:flex w-1/2 items-center justify-center bg-background-light dark:bg-background-dark p-12">
-        <div className="relative">
-          <img
-            src="/Graphic 1.png"
-            alt="Person reading a book with floating elements"
-            className="w-full max-w-lg"
-          />
-        </div>
-      </div>
-      <ThemeToggle />
-
-      {/* Phone Number Modal */}
-      {showPhoneModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-background-light dark:bg-background-dark p-6 rounded-lg max-w-md w-full">
-            <h2 className="text-xl font-bold text-text-light dark:text-text-dark mb-4">
-              Enter Your Phone Number
-            </h2>
-            <p className="text-sm text-text-light dark:text-text-dark mb-4">
-              A valid phone number is required to complete your registration.
-            </p>
-            <form onSubmit={handlePhoneSubmit}>
-              <input
-                type="tel"
-                value={emailTempData ? emailPhoneNumber : googlePhoneNumber}
-                onChange={(e) => (emailTempData ? setEmailPhoneNumber(e.target.value) : setGooglePhoneNumber(e.target.value))}
-                placeholder="Phone Number (10 digits)"
-                className="w-full rounded-full border border-border-light dark:border-border-dark px-4 py-3 text-text-light dark:text-text-light focus:border-primary-light dark:focus:border-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 transition-colors mb-4"
-              />
+              
               {error && (
-                <div className="rounded-full bg-warning-light dark:bg-warning-dark p-3 text-sm text-warning-light dark:text-warning-dark mb-4">
+                <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">
                   {error}
                 </div>
               )}
-              <div className="flex justify-end space-x-4">
+              
+              {message && (
+                <div className="bg-green-100 border border-green-300 p-3 text-sm text-green-700 rounded-md">
+                  {message}
+                </div>
+              )}
+              
+              <button 
+                type="submit"
+                disabled={loading} 
+                className="w-full rounded-md bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? "Processing..." : "Continue"}
+              </button>
+            </form>
+          </>
+        )}
+
+        {/* Form for OTP Verification */}
+        {step === 'otp' && (
+          <>
+            <h1 className="mb-4 text-center text-3xl font-bold text-gray-800">Verify Your Email</h1>
+            {message && (
+              <p className="text-center text-green-600 mb-4 bg-green-50 p-3 rounded-md">
+                {message}
+              </p>
+            )}
+            <p className="text-center text-gray-600 mb-4">
+              Enter the 6-digit code sent to<br />
+              <strong>{formData.email}</strong>
+            </p>
+            
+            <form onSubmit={handleOtpSubmit} className="space-y-4">
+              <input 
+                type="text" 
+                value={otp} 
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setOtp(value);
+                }} 
+                placeholder="000000" 
+                maxLength="6" 
+                required 
+                className="w-full text-center text-xl tracking-widest rounded-md border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none font-mono" 
+              />
+              
+              {error && (
+                <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">
+                  {error}
+                </div>
+              )}
+              
+              <button 
+                type="submit"
+                disabled={loading || otp.length !== 6} 
+                className="w-full rounded-md bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? "Verifying..." : "Verify & Sign In"}
+              </button>
+            </form>
+
+            {/* Resend OTP Section */}
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
+              {canResend ? (
                 <button
                   type="button"
-                  onClick={() => setShowPhoneModal(false)}
-                  className="rounded-full border border-border-light dark:border-border-dark px-4 py-2 text-text-light dark:text-text-dark"
+                  onClick={handleResendOtp}
+                  disabled={resendLoading}
+                  className="text-blue-600 hover:text-blue-800 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {resendLoading ? "Sending..." : "Resend OTP"}
                 </button>
-                <button
-                  type="submit"
-                  className="rounded-full bg-primary-light dark:bg-primary-dark px-4 py-2 text-text-light dark:text-text-dark"
-                >
-                  Submit
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Resend available in {countdown} seconds
+                </p>
+              )}
+            </div>
+
+            {/* Go back button */}
+            <button
+              type="button"
+              onClick={() => {
+                setStep('details');
+                setOtp('');
+                setError(null);
+                setMessage(null);
+                setCanResend(false);
+                setCountdown(0);
+              }}
+              className="mt-4 w-full text-center text-sm text-gray-600 hover:text-gray-800"
+            >
+              ← Change email address
+            </button>
+          </>
+        )}
+
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Already have an account?{" "}
+          <button
+            type="button"
+            onClick={() => window.location.href = '/auth/signin'}
+            className="font-medium text-blue-600 hover:underline"
+          >
+            Sign in
+          </button>
+        </p>
+      </div>
     </div>
   );
 }
 
-export default MainComponent;
+export default SignUpPage;

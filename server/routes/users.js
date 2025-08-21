@@ -118,7 +118,7 @@ if (!user) {
         user.otp = otp;
         user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
-
+        // this will be sending the otp in the mean time of the 
         // Send OTP email
         const emailSent = await sendOTPEmail(email, otp);
         if (!emailSent) {
@@ -127,7 +127,7 @@ if (!user) {
 
         res.status(200).json({ message: 'OTP sent successfully' });
     } catch (err) {
-        console.error('Error sending OTP:', err.message);
+        console.error('Error sending OTP:', err.message); // this will show an error 
         res.status(500).json({ error: err.message });
     }
 });
