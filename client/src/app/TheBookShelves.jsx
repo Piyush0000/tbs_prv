@@ -7,8 +7,10 @@ import Carousel from "../components/carousel";
 import Footer from "../components/footer";
 import Header from "../components/header";
 import ThemeToggle from "../components/ThemeToggle";
+import { useAuth } from './Hooks/AuthContext'; // Import the useAuth hook
 
 function TheBookShelves() {
+  const { user, isLoggedIn, loading } = useAuth(); // Get user data from useAuth
   const [currentSlide, setCurrentSlide] = useState(0);
   const [books, setBooks] = useState([]);
   const [cafes, setCafes] = useState([]);
@@ -153,6 +155,18 @@ function TheBookShelves() {
     },
   ];
 
+  // Loading state from MainPage.jsx
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
+          <p className="text-text-light dark:text-text-dark">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -161,9 +175,12 @@ function TheBookShelves() {
     );
   }
 
+  // If not logged in, show the public page with a login button
+  // If logged in, show the public page but with user name and logout button in header
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
       <Header
+        user={user} // Pass the user object to the Header
         location="New Town, Kolkata"
         onLocationChange={() => {}}
         onSearch={handleSearch}

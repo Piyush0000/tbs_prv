@@ -4,7 +4,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { sendOTPEmail } = require('../utils/mailer');
+const { sendOTPEmail, testEmailConnection } = require('../utils/mailer');
 
 /**
  * @route   POST /api/auth/signup
@@ -12,127 +12,211 @@ const { sendOTPEmail } = require('../utils/mailer');
  * @access  Public
  */
 router.post('/signup', async (req, res) => {
+    console.log('\n=== SIGNUP PROCESS START ===');
+    console.log('Request body:', req.body);
+    
     try {
         const { name, phone_number, email, password } = req.body;
 
+        console.log('1. Extracted data:', { name, phone_number, email, password: '***' });
+
         // Validation
         if (!name || !phone_number || !email || !password) {
+            console.log('❌ Validation failed: Missing required fields');
             return res.status(400).json({ message: "All fields are required" });
         }
         
-        // Trim and normalize inputs
-        const cleanName = name.trim();
-        const cleanPhone = phone_number.trim();
-        const cleanEmail = email.trim().toLowerCase();
-        
-        if (!cleanName || !cleanPhone || !cleanEmail || !password) {
-            return res.status(400).json({ message: "All fields must contain valid data" });
-        }
-        
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            console.log('❌ Validation failed: Invalid email format');
             return res.status(400).json({ message: "Invalid email format" });
         }
+        
         if (password.length < 8 || !/[!@#$%^&*]/.test(password)) {
+            console.log('❌ Validation failed: Invalid password');
             return res.status(400).json({ message: "Password must be 8+ characters with a special character" });
         }
-        if (!/^\d{10}$/.test(cleanPhone)) {
-            return res.status(400).json({ message: "Phone number must be exactly 10 digits" });
+        
+        if (!/^\d{10}$/.test(phone_number)) {
+            console.log('❌ Validation failed: Invalid phone number');
+            return res.status(400).json({ message: "Phone number must be 10 digits" });
         }
 
+        console.log('✅ All validations passed');
+
+        // Test email connection first
+        console.log('1.5. Testing email connection...');
+        const emailConnectionOk = await testEmailConnection();
+        if (!emailConnectionOk) {
+            console.log('❌ Email connection failed');
+            return res.status(500).json({ 
+                message: "Email service is currently unavailable. Please try again later." 
+            });
+        }
+        console.log('✅ Email connection verified');
+
         // Check if user already exists
+        console.log('2. Checking for existing user...');
         const existingUser = await User.findOne({ 
-            email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } 
+            email: { $regex: new RegExp(`^${email}$`, 'i') } 
         });
         
         if (existingUser) {
+            console.log('Found existing user:', {
+                id: existingUser._id,
+                email: existingUser.email,
+                isVerified: existingUser.isVerified
+            });
+            
             if (existingUser.isVerified) {
+                console.log('❌ User already exists and verified');
                 return res.status(400).json({ 
-                    message: "An account with this email already exists and is verified. Please sign in instead." 
+                    message: "An account with this email already exists and is verified." 
                 });
             } else {
-                // User exists but not verified - delete the old record and create new one
+                console.log('Deleting unverified existing user...');
                 await User.deleteOne({ _id: existingUser._id });
+                console.log('✅ Unverified user deleted');
             }
+        } else {
+            console.log('✅ No existing user found');
         }
 
-        // Generate OTP (6 digits)
+        // Generate OTP
+        console.log('3. Generating OTP...');
         const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-        console.log('Generated OTP (plain text):', otp);
+        console.log('Generated OTP:', otp);
+        console.log('OTP expires at:', otpExpires);
+        console.log('OTP type:', typeof otp);
 
-        // Create new user - OTP and password will be automatically hashed by pre-save hook
+        // Create new user
+        console.log('4. Creating new user object...');
         const newUser = new User({
-            name: cleanName,
-            phone_number: cleanPhone,
-            email: cleanEmail,
-            password, // Will be hashed by pre-save hook
-            otp: otp, // Will be hashed by pre-save hook
+            name,
+            phone_number,
+            email: email.toLowerCase(),
+            password,
+            otp,
             otpExpires,
             isVerified: false,
             role: 'user'
         });
 
-        // Save user - this will trigger the pre-save hook to hash password and OTP
-        await newUser.save();
+        console.log('User object created, OTP stored as:', newUser.otp);
+        console.log('About to save user...');
+
+        // Save user
+        console.log('5. Saving user to database...');
+        const savedUser = await newUser.save();
         
-        console.log('User saved. OTP should now be hashed in database.');
-        console.log('Stored OTP starts with $2:', newUser.otp ? newUser.otp.startsWith('$2') : false);
+        console.log('✅ User saved successfully!');
+        console.log('User ID:', savedUser._id);
+        console.log('Generated user_id:', savedUser.user_id);
+        console.log('Saved OTP in DB:', savedUser.otp);
         
-        // Send OTP email with the ORIGINAL plain text OTP (not the hashed one)
-        await sendOTPEmail(cleanEmail, otp);
+        // Verify the user was actually saved with OTP
+        console.log('6. Verifying user in database...');
+        const verifyUser = await User.findById(savedUser._id);
+        console.log('Verification - User exists:', !!verifyUser);
+        console.log('Verification - OTP in DB:', verifyUser ? verifyUser.otp : 'USER NOT FOUND');
+        console.log('Verification - OTP Expires:', verifyUser ? verifyUser.otpExpires : 'USER NOT FOUND');
+        
+        if (!verifyUser) {
+            console.log('❌ CRITICAL: User not found after save!');
+            return res.status(500).json({ message: "User creation failed - not saved to database" });
+        }
+        
+        if (!verifyUser.otp) {
+            console.log('❌ CRITICAL: OTP not saved to database!');
+            return res.status(500).json({ message: "OTP not saved to database" });
+        }
+
+        // Send OTP email
+        console.log('7. Attempting to send OTP email...');
+        try {
+            // Check if sendOTPEmail is available
+            if (typeof sendOTPEmail !== 'function') {
+                throw new Error('sendOTPEmail is not a function - check mailer import');
+            }
+            
+            const emailResult = await sendOTPEmail(savedUser.email, otp);
+            console.log('✅ Email sent successfully');
+            console.log('Email result:', emailResult);
+            
+        } catch (emailError) {
+            console.log('❌ Email sending failed:', emailError.message);
+            console.log('Email error details:', emailError);
+            
+            // Delete the user since email failed
+            await User.deleteOne({ _id: savedUser._id });
+            console.log('User deleted due to email failure');
+            
+            return res.status(500).json({ 
+                message: "Failed to send verification email. Please try again.",
+                error: emailError.message
+            });
+        }
+
+        console.log('8. Signup process completed successfully');
+        console.log('=== SIGNUP PROCESS END ===\n');
 
         res.status(201).json({ 
-            message: "Registration successful! Please check your email for a 6-digit OTP to verify your account." 
+            message: "Registration successful! Please check your email for an OTP to verify your account.",
+            debug: {
+                userId: savedUser._id,
+                userIdGenerated: savedUser.user_id,
+                otpSaved: !!savedUser.otp,
+                emailSent: true
+            }
         });
         
     } catch (error) {
-        console.error("Signup Error:", error);
+        console.log('❌ SIGNUP ERROR:', error.message);
+        console.log('Error stack:', error.stack);
+        console.log('Error details:', error);
+        console.log('=== SIGNUP PROCESS END (ERROR) ===\n');
         
-        if (error.code === 11000) {
-            return res.status(400).json({ message: "An account with this email already exists" });
-        }
-        
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({ message: messages.join(', ') });
-        }
-        
-        res.status(500).json({ message: "Registration failed. Please try again." });
+        res.status(500).json({ 
+            message: "Internal server error",
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
 /**
- * @route   POST /api/auth/signup/verify
+ * @route   POST /api/auth/verify-otp
  * @desc    Verify user's email with OTP
  * @access  Public
  */
-router.post('/signup/verify', async (req, res) => {
+router.post('/verify-otp', async (req, res) => {
+    console.log('\n=== OTP VERIFICATION START ===');
+    console.log('Request body:', req.body);
+    
     try {
         const { email, otp } = req.body;
 
-        // Enhanced validation
-        if (!email || typeof email !== 'string' || email.trim() === '') {
-            return res.status(400).json({ message: "Valid email is required" });
+        console.log('OTP verification request:', { email, otp });
+
+        // Enhanced validation with better error messages
+        if (!email || email.trim() === '') {
+            return res.status(400).json({ message: "Email is required." });
         }
         
-        if (!otp || typeof otp !== 'string' || otp.trim() === '') {
-            return res.status(400).json({ message: "OTP is required" });
+        if (!otp || otp.trim() === '') {
+            return res.status(400).json({ message: "OTP is required." });
         }
 
-        // Clean and validate inputs
-        const cleanEmail = email.trim().toLowerCase();
+        // Validate OTP format (should be 6 digits)
         const cleanOtp = otp.trim();
-        
-        // Validate email format
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-            return res.status(400).json({ message: "Invalid email format" });
-        }
-        
-        // Validate OTP format (should be exactly 6 digits)
         if (!/^\d{6}$/.test(cleanOtp)) {
-            return res.status(400).json({ message: "OTP must be exactly 6 digits" });
+            return res.status(400).json({ message: "OTP must be exactly 6 digits." });
         }
+
+        const cleanEmail = email.toLowerCase().trim();
+        
+        console.log('Looking for user with email:', cleanEmail);
         
         // Find user with matching email and valid OTP expiration
         const user = await User.findOne({
@@ -142,148 +226,69 @@ router.post('/signup/verify', async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).json({ 
-                message: "User not found, OTP expired, or account already verified. Please register again if needed." 
-            });
+            console.log('User not found or OTP expired for email:', cleanEmail);
+            // Check if user exists at all
+            const userExists = await User.findOne({ email: cleanEmail });
+            if (!userExists) {
+                console.log('No user found with this email');
+                return res.status(400).json({ 
+                    message: "User not found. Please register first." 
+                });
+            } else if (userExists.isVerified) {
+                console.log('User already verified');
+                return res.status(400).json({ 
+                    message: "Account already verified. Please sign in.",
+                    redirectTo: "/auth/signin"
+                });
+            } else {
+                console.log('OTP expired for user');
+                return res.status(400).json({ 
+                    message: "OTP has expired. Please request a new one." 
+                });
+            }
         }
 
-        // Check if user has OTP stored
-        if (!user.otp) {
-            return res.status(400).json({ 
-                message: "No OTP found for this account. Please request a new one." 
-            });
+        console.log('User found:', user._id);
+        console.log('Stored OTP:', user.otp);
+        console.log('Provided OTP:', cleanOtp);
+
+        // Compare OTP (direct comparison since we're storing as plain text)
+        if (user.otp !== cleanOtp) {
+            console.log('OTP mismatch');
+            return res.status(400).json({ message: "Invalid OTP. Please try again." });
         }
 
-        console.log('OTP Verification Debug:', {
-            email: cleanEmail,
-            providedOTP: cleanOtp,
-            storedOTPExists: !!user.otp,
-            isStoredOTPHashed: user.otp.startsWith('$2'),
-            storedOTPLength: user.otp.length
-        });
-
-        // Compare OTP using the model method
-        const isOTPValid = await user.compareOTP(cleanOtp);
-        console.log('OTP comparison result:', isOTPValid);
-
-        if (!isOTPValid) {
-            return res.status(400).json({ message: "Invalid OTP. Please check and try again." });
-        }
+        console.log('OTP verified successfully');
 
         // OTP is correct, verify the user
         user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
-        
         await user.save();
         
-        // Generate JWT token for auto-login
-        const token = jwt.sign(
-            { 
-                id: user._id, 
-                role: user.role,
-                email: user.email 
-            }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: '24h' }
-        );
+        console.log('User verified and saved');
+        console.log('=== OTP VERIFICATION END ===\n');
         
         res.status(200).json({ 
-            message: "Email verified successfully! Welcome aboard!", 
-            token,
-            user: { 
-                id: user._id, 
-                user_id: user.user_id,
-                email: user.email, 
-                role: user.role,
-                name: user.name 
-            }
+            message: "Email verified successfully! Redirecting to sign in...",
+            redirectTo: "/auth/signin"
         });
 
     } catch (error) {
         console.error("OTP Verification Error:", error);
+        console.error("Error stack:", error.stack);
+        console.log('=== OTP VERIFICATION END (ERROR) ===\n');
         
-        // Handle specific error types
+        // More specific error handling
         if (error.name === 'CastError') {
-            return res.status(400).json({ message: "Invalid data provided" });
+            return res.status(400).json({ message: "Invalid data format." });
         }
         
         if (error.name === 'ValidationError') {
             return res.status(400).json({ message: "Validation error: " + error.message });
         }
         
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(500).json({ message: "Authentication setup failed. Please contact support." });
-        }
-        
-        res.status(500).json({ message: "Verification failed. Please try again." });
-    }
-});
-
-/**
- * @route   POST /api/auth/login
- * @desc    Login a user (only if verified)
- * @access  Public
- */
-router.post('/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
-        }
-
-        const cleanEmail = email.trim().toLowerCase();
-
-        // Find user by email
-        const user = await User.findOne({ 
-            email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } 
-        });
-        
-        if (!user) {
-            return res.status(400).json({ error: 'Invalid email or password' });
-        }
-        
-        // Check if the user's email is verified
-        if (!user.isVerified) {
-            return res.status(401).json({ 
-                error: 'Your account is not verified. Please check your email for verification instructions or register again.',
-                needsVerification: true
-            });
-        }
-
-        // Check password using model method
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(400).json({ error: 'Invalid email or password' });
-        }
-        
-        // Generate token
-        const token = jwt.sign(
-            { 
-                id: user._id, 
-                role: user.role,
-                email: user.email 
-            }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: '24h' }
-        );
-        
-        res.status(200).json({ 
-            message: 'Login successful',
-            token, 
-            user: { 
-                id: user._id,
-                user_id: user.user_id, 
-                email: user.email, 
-                role: user.role,
-                name: user.name 
-            } 
-        });
-
-    } catch (error) {
-        console.error('Login Error:', error);
-        res.status(500).json({ error: 'Login failed. Please try again.' });
+        res.status(500).json({ message: "Internal server error: " + error.message });
     }
 });
 
@@ -293,28 +298,26 @@ router.post('/login', async (req, res) => {
  * @access  Public
  */
 router.post('/resend-otp', async (req, res) => {
+    console.log('\n=== RESEND OTP START ===');
+    
     try {
         const { email } = req.body;
 
-        if (!email || typeof email !== 'string' || email.trim() === '') {
-            return res.status(400).json({ message: "Valid email is required" });
-        }
+        console.log('Resend OTP request for:', email);
 
-        const cleanEmail = email.trim().toLowerCase();
-        
-        // Validate email format
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-            return res.status(400).json({ message: "Invalid email format" });
+        if (!email) {
+            return res.status(400).json({ message: "Email is required" });
         }
 
         const user = await User.findOne({
-            email: cleanEmail,
+            email: email.toLowerCase(),
             isVerified: false
         });
 
         if (!user) {
+            console.log('No unverified user found for email:', email);
             return res.status(400).json({ 
-                message: "User not found or already verified. Please register if you don't have an account." 
+                message: "User not found or already verified" 
             });
         }
 
@@ -322,25 +325,33 @@ router.post('/resend-otp', async (req, res) => {
         const otp = crypto.randomInt(100000, 999999).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-        console.log('Resending OTP (plain text):', otp);
+        console.log('Generated new OTP:', otp);
 
-        // Set new OTP - it will be automatically hashed by pre-save hook
-        user.otp = otp;
+        user.otp = otp; // Store as plain text
         user.otpExpires = otpExpires;
         await user.save();
 
-        console.log('New OTP saved. Should be hashed:', user.otp.startsWith('$2'));
+        console.log('Updated user with new OTP');
 
-        // Send new OTP email with the ORIGINAL plain text OTP
-        await sendOTPEmail(cleanEmail, otp);
+        // Send new OTP
+        try {
+            await sendOTPEmail(user.email, otp);
+            console.log('Resend OTP email sent successfully');
+        } catch (emailError) {
+            console.error('Failed to send resend OTP email:', emailError);
+            return res.status(500).json({ message: "Failed to send OTP email" });
+        }
 
+        console.log('=== RESEND OTP END ===\n');
+        
         res.status(200).json({ 
-            message: "New OTP has been sent to your email. Please check your inbox." 
+            message: "New OTP sent to your email" 
         });
 
     } catch (error) {
         console.error("Resend OTP Error:", error);
-        res.status(500).json({ message: "Failed to resend OTP. Please try again." });
+        console.log('=== RESEND OTP END (ERROR) ===\n');
+        res.status(500).json({ message: "Internal server error: " + error.message });
     }
 });
 

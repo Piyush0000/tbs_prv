@@ -22,27 +22,6 @@ function SignUpPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Client-side validation
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      setError("Full name is required");
-      return false;
-    }
-    if (!/^\d{10}$/.test(formData.phone_number)) {
-      setError("Phone number must be exactly 10 digits");
-      return false;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError("Please enter a valid email address");
-      return false;
-    }
-    if (formData.password.length < 8 || !/[!@#$%^&*]/.test(formData.password)) {
-      setError("Password must be 8+ characters with at least one special character");
-      return false;
-    }
-    return true;
-  };
-
   // Start countdown timer for resend OTP
   const startResendTimer = () => {
     setCanResend(false);
@@ -63,44 +42,27 @@ function SignUpPage() {
   // Step 1: Submit user details
   const handleDetailsSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     setError(null);
     setMessage(null);
 
-    // Validate form
-    if (!validateForm()) {
-      return;
-    }
-
-    setLoading(true);
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          phone_number: formData.phone_number.trim(),
-          email: formData.email.trim().toLowerCase(),
-          password: formData.password
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || `Server error: ${response.status}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to start registration.');
       }
       
-      setMessage(data.message || 'OTP sent successfully!');
+      setMessage(data.message);
       setStep('otp');
-      startResendTimer();
-      
+      startResendTimer(); // Start the resend timer
     } catch (err) {
-      console.error('Signup error:', err);
-      setError(err.message || 'Registration failed. Please try again.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -109,51 +71,33 @@ function SignUpPage() {
   // Step 2: Verify OTP
   const handleOtpSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    setMessage(null);
-
-    // Validate OTP
-    const cleanOtp = otp.trim();
-    if (!/^\d{6}$/.test(cleanOtp)) {
-      setError("Please enter a valid 6-digit OTP");
-      return;
-    }
-
     setLoading(true);
+    setError(null);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup/verify`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email: formData.email.trim().toLowerCase(), 
-          otp: cleanOtp 
+          email: formData.email.toLowerCase(), 
+          otp: otp.trim() 
         }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || `Verification failed: ${response.status}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'OTP verification failed. Please try again.');
       }
 
-      // Store token if provided
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-      }
-
-      setMessage("Account verified successfully! Redirecting...");
+      // Show success message briefly before redirect
+      setMessage(data.message || "Account verified successfully! Redirecting to sign in...");
       setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 1500);
+        // Redirect to sign in page
+        window.location.href = data.redirectTo || '/auth/signin';
+      }, 2000);
 
     } catch (err) {
-      console.error('OTP verification error:', err);
-      setError(err.message || 'OTP verification failed. Please try again.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -166,30 +110,23 @@ function SignUpPage() {
     setMessage(null);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ 
-          email: formData.email.trim().toLowerCase() 
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email.toLowerCase() }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to resend OTP');
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to resend OTP.');
       }
 
       setMessage(data.message || "New OTP sent to your email");
-      setOtp("");
-      startResendTimer();
+      setOtp(""); // Clear current OTP input
+      startResendTimer(); // Restart timer
       
     } catch (err) {
-      console.error('Resend OTP error:', err);
-      setError(err.message || 'Failed to resend OTP. Please try again.');
+      setError(err.message);
     } finally {
       setResendLoading(false);
     }
@@ -218,13 +155,7 @@ function SignUpPage() {
                 name="phone_number" 
                 placeholder="Phone Number (10 digits)" 
                 value={formData.phone_number}
-                onChange={(e) => {
-                  // Only allow numbers
-                  const value = e.target.value.replace(/\D/g, '');
-                  if (value.length <= 10) {
-                    setFormData({ ...formData, phone_number: value });
-                  }
-                }}
+                onChange={handleInputChange} 
                 required 
                 className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
@@ -247,24 +178,15 @@ function SignUpPage() {
                 className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none" 
               />
               
-              {error && (
-                <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">
-                  {error}
-                </div>
-              )}
-              
-              {message && (
-                <div className="bg-green-100 border border-green-300 p-3 text-sm text-green-700 rounded-md">
-                  {message}
-                </div>
-              )}
+              {error && <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">{error}</div>}
+              {message && <div className="bg-green-100 border border-green-300 p-3 text-sm text-green-700 rounded-md">{message}</div>}
               
               <button 
                 type="submit"
                 disabled={loading} 
                 className="w-full rounded-md bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? "Processing..." : "Continue"}
+                {loading ? "Creating Account..." : "Create Account"}
               </button>
             </form>
           </>
@@ -274,11 +196,7 @@ function SignUpPage() {
         {step === 'otp' && (
           <>
             <h1 className="mb-4 text-center text-3xl font-bold text-gray-800">Verify Your Email</h1>
-            {message && (
-              <p className="text-center text-green-600 mb-4 bg-green-50 p-3 rounded-md">
-                {message}
-              </p>
-            )}
+            {message && <p className="text-center text-green-600 mb-4 bg-green-50 p-3 rounded-md">{message}</p>}
             <p className="text-center text-gray-600 mb-4">
               Enter the 6-digit code sent to<br />
               <strong>{formData.email}</strong>
@@ -288,28 +206,21 @@ function SignUpPage() {
               <input 
                 type="text" 
                 value={otp} 
-                onChange={(e) => {
-                  const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setOtp(value);
-                }} 
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} 
                 placeholder="000000" 
                 maxLength="6" 
                 required 
                 className="w-full text-center text-xl tracking-widest rounded-md border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none font-mono" 
               />
               
-              {error && (
-                <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">
-                  {error}
-                </div>
-              )}
+              {error && <div className="bg-red-100 border border-red-300 p-3 text-sm text-red-700 rounded-md">{error}</div>}
               
               <button 
                 type="submit"
                 disabled={loading || otp.length !== 6} 
                 className="w-full rounded-md bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? "Verifying..." : "Verify & Sign In"}
+                {loading ? "Verifying..." : "Verify Email"}
               </button>
             </form>
 
@@ -318,7 +229,6 @@ function SignUpPage() {
               <p className="text-sm text-gray-600 mb-2">Didn't receive the code?</p>
               {canResend ? (
                 <button
-                  type="button"
                   onClick={handleResendOtp}
                   disabled={resendLoading}
                   className="text-blue-600 hover:text-blue-800 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -334,14 +244,11 @@ function SignUpPage() {
 
             {/* Go back button */}
             <button
-              type="button"
               onClick={() => {
                 setStep('details');
                 setOtp('');
                 setError(null);
                 setMessage(null);
-                setCanResend(false);
-                setCountdown(0);
               }}
               className="mt-4 w-full text-center text-sm text-gray-600 hover:text-gray-800"
             >
@@ -353,7 +260,6 @@ function SignUpPage() {
         <p className="mt-6 text-center text-sm text-gray-600">
           Already have an account?{" "}
           <button
-            type="button"
             onClick={() => window.location.href = '/auth/signin'}
             className="font-medium text-blue-600 hover:underline"
           >

@@ -2,7 +2,12 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
-    user_id: { type: String, required: true, unique: true },
+    user_id: { 
+        type: String, 
+        required: false, // Changed from true to false
+        unique: true, 
+        sparse: true // This allows multiple documents with null/undefined user_id during creation
+    },
     name: { type: String, required: true },
     phone_number: { type: String, required: false, unique: true, sparse: true },
     email: { type: String, required: true, unique: true },
@@ -19,40 +24,45 @@ const userSchema = new mongoose.Schema({
     district: String,
     pincode: String,
     isVerified: { type: Boolean, default: false },
-    otp: String, // Will be hashed automatically in pre-save hook
+    otp: String, // Store OTP as plain text for easier comparison
     otpExpires: Date,
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 });
 
-// Pre-save hook to handle hashing
 userSchema.pre('save', async function (next) {
     try {
-        // Generate user_id if it doesn't exist
-        if (!this.user_id) {
-            const timestamp = Date.now().toString();
-            const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            this.user_id = `USER_${timestamp}_${randomNum}`;
+        // Generate user_id only for new users
+        if (this.isNew && !this.user_id) {
+            console.log('Generating user_id for new user...');
+
+            // Find the last inserted user_id
+            const lastUser = await mongoose.models.User.findOne({})
+                .sort({ createdAt: -1 }) // latest user
+                .select('user_id');
+
+            let userIdNumber = 1;
+            if (lastUser && lastUser.user_id) {
+                const lastNum = parseInt(lastUser.user_id.split('_')[1], 10);
+                userIdNumber = lastNum + 1;
+            }
+
+            this.user_id = `User_${String(userIdNumber).padStart(3, '0')}`;
+            console.log('Generated user_id:', this.user_id);
         }
 
-        // Hash password if it's been modified and exists and is not already hashed
-        if (this.isModified('password') && this.password && !this.password.startsWith('$2')) {
+        // Hash password if needed
+        if (this.isModified('password') && this.password) {
             console.log('Hashing password...');
-            const salt = await bcrypt.genSalt(10);
-            this.password = await bcrypt.hash(this.password, salt);
+            this.password = await bcrypt.hash(this.password, 10);
             console.log('Password hashed successfully');
         }
 
-        // Hash OTP if it's been modified and exists and is not already hashed
-        if (this.isModified('otp') && this.otp && !this.otp.startsWith('$2')) {
-            console.log('Hashing OTP...', 'Original OTP:', this.otp);
-            const salt = await bcrypt.genSalt(10);
-            this.otp = await bcrypt.hash(this.otp, salt);
-            console.log('OTP hashed successfully', 'Hashed OTP:', this.otp);
+        // Update updatedAt on modification
+        if (!this.isNew) {
+            console.log('Updating updatedAt...');
+            this.updatedAt = Date.now();
         }
-
-        // Update updatedAt timestamp
-        this.updatedAt = new Date();
 
         next();
     } catch (err) {
@@ -61,42 +71,30 @@ userSchema.pre('save', async function (next) {
     }
 });
 
-// Add a method to compare passwords
-userSchema.methods.comparePassword = async function(candidatePassword) {
-    if (!this.password) {
-        return false;
-    }
-    return await bcrypt.compare(candidatePassword, this.password);
-};
 
-// Add a method to compare OTP
-userSchema.methods.compareOTP = async function(candidateOTP) {
-    if (!this.otp) {
-        console.log('No OTP stored');
+// Validation to ensure user_id is always set after save
+userSchema.post('save', function(doc) {
+    if (!doc.user_id) {
+        console.error('CRITICAL: User saved without user_id:', doc._id);
+    } else {
+        console.log('User saved successfully with user_id:', doc.user_id);
+    }
+});
+
+// Add method to check if OTP is valid
+userSchema.methods.isOTPValid = function(providedOTP) {
+    // Check if OTP exists and hasn't expired
+    if (!this.otp || !this.otpExpires) {
         return false;
     }
     
-    console.log('Comparing OTP:', {
-        candidateOTP,
-        storedOTPExists: !!this.otp,
-        isHashed: this.otp.startsWith('$2')
-    });
-    
-    // Since we're now always hashing OTP, we can simply use bcrypt.compare
-    try {
-        const result = await bcrypt.compare(candidateOTP, this.otp);
-        console.log('OTP comparison result:', result);
-        return result;
-    } catch (error) {
-        console.error('Error comparing OTP:', error);
+    // Check if OTP has expired
+    if (new Date() > this.otpExpires) {
         return false;
     }
+    
+    // Compare OTP (direct string comparison)
+    return this.otp === providedOTP.trim();
 };
-
-// Add index for better query performance
-userSchema.index({ email: 1 });
-userSchema.index({ user_id: 1 });
-userSchema.index({ phone_number: 1 });
-userSchema.index({ isVerified: 1, otpExpires: 1 });
 
 module.exports = mongoose.model('User', userSchema);
