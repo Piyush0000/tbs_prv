@@ -10,7 +10,7 @@ import ThemeToggle from "../components/ThemeToggle";
 import { useAuth } from './Hooks/AuthContext'; // Import the useAuth hook
 
 function TheBookShelves() {
-  const { user, isLoggedIn, loading } = useAuth(); // Get user data from useAuth
+  const { user, isLoggedIn, loading, logout } = useAuth();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [books, setBooks] = useState([]);
   const [cafes, setCafes] = useState([]);
@@ -112,6 +112,17 @@ function TheBookShelves() {
     fetchBooks(query);
     fetchCafes(query);
   };
+  const handleLogout = async () => {
+  console.log('Logout initiated from header');
+  const success = await logout();
+  if (success) {
+    console.log('Logout successful, reloading page.');
+    // Reload the page to clear state and show the public view
+    window.location.reload();
+  } else {
+    console.error('Logout failed');
+  }
+};
 
   useEffect(() => {
     fetchBooks();
@@ -188,14 +199,18 @@ function TheBookShelves() {
   // If logged in, show the public page but with user name and logout button in header
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
-      <Header
-        user={user} // Pass the user object to the Header
-        location="New Town, Kolkata"
-        onLocationChange={() => {}}
-        onSearch={handleSearch}
+     
 
-        
-      />
+
+
+
+<Header
+  user={user}
+  location="New Town, Kolkata"
+  onLocationChange={() => {}}
+  onSearch={handleSearch}
+  onLogout={handleLogout} // <-- ADD THIS LINE
+/>
       <main className="px-4 sm:px-4 md:px-6 py-8 w-full sm:w-[80%] mx-auto">
         {!searchQuery && (
           <section id="Carousel" className="mb-12 w-full">
