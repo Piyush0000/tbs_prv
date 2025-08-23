@@ -4,9 +4,9 @@ const bcrypt = require('bcryptjs');
 const userSchema = new mongoose.Schema({
     user_id: { 
         type: String, 
-        required: false, // Changed from true to false
+        required: false,
         unique: true, 
-        sparse: true // This allows multiple documents with null/undefined user_id during creation
+        sparse: true
     },
     name: { type: String, required: true },
     phone_number: { type: String, required: false, unique: true, sparse: true },
@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
     district: String,
     pincode: String,
     isVerified: { type: Boolean, default: false },
-    otp: String, // Store OTP as plain text for easier comparison
+    otp: String,
     otpExpires: Date,
     resetPasswordToken: String,
     resetPasswordExpires: Date,
@@ -38,7 +38,7 @@ userSchema.pre('save', async function (next) {
 
             // Find the last inserted user_id
             const lastUser = await mongoose.models.User.findOne({})
-                .sort({ createdAt: -1 }) // latest user
+                .sort({ createdAt: -1 })
                 .select('user_id');
 
             let userIdNumber = 1;
@@ -51,10 +51,11 @@ userSchema.pre('save', async function (next) {
             console.log('Generated user_id:', this.user_id);
         }
 
-        // Hash password if needed
+        // Hash password if needed - CONSISTENT SALT ROUNDS
         if (this.isModified('password') && this.password) {
             console.log('Hashing password...');
-            this.password = await bcrypt.hash(this.password, 10);
+            const saltRounds = 10; // Consistent with auth.js
+            this.password = await bcrypt.hash(this.password, saltRounds);
             console.log('Password hashed successfully');
         }
 
@@ -70,7 +71,6 @@ userSchema.pre('save', async function (next) {
         next(err);
     }
 });
-
 
 // Validation to ensure user_id is always set after save
 userSchema.post('save', function(doc) {
@@ -95,6 +95,16 @@ userSchema.methods.isOTPValid = function(providedOTP) {
     
     // Compare OTP (direct string comparison)
     return this.otp === providedOTP.trim();
+};
+
+// Method to compare password
+userSchema.methods.comparePassword = async function(candidatePassword) {
+    try {
+        return await bcrypt.compare(candidatePassword, this.password);
+    } catch (error) {
+        console.error('Password comparison error:', error);
+        return false;
+    }
 };
 
 module.exports = mongoose.model('User', userSchema);

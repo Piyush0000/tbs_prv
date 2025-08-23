@@ -87,175 +87,6 @@ const sendOTPEmail = async (email, otp) => {
     }
 };
 
-// POST /send-otp: Send OTP to user's email for verification
-router.post('/send-otp', async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        if (!email) {
-            return res.status(400).json({ error: 'Email is required' });
-        }
-
-        // Check if user exists
-       const user = await User.findOne({
-    email: { $regex: new RegExp(`^${email}$`, 'i') }
-});
-
-if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-}
-
-        // Generate OTP
-        const otp = otpGenerator.generate(6, {
-            digits: true,
-            alphabets: false,
-            upperCase: false,
-            specialChars: false
-        });
-        
-
-        // Save OTP and expiration time to user document
-        user.otp = otp;
-        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-        await user.save();
-        // this will be sending the otp in the mean time of the 
-        // Send OTP email
-        const emailSent = await sendOTPEmail(email, otp);
-        if (!emailSent) {
-            return res.status(500).json({ error: 'Failed to send OTP email' });
-        }
-
-        res.status(200).json({ message: 'OTP sent successfully' });
-    } catch (err) {
-        console.error('Error sending OTP:', err.message); // this will show an error 
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /verify-otp: Verify OTP for email verification
-router.post('/verify-otp', async (req, res) => {
-    try {
-        const { email, otp } = req.body;
-
-        if (!email || !otp) {
-            return res.status(400).json({ error: 'Email and OTP are required' });
-        }
-
-        // Find user by email
-        const user = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Check if OTP matches and is not expired
-        if (user.otp !== otp || user.otpExpires < new Date()) {
-            return res.status(400).json({ error: 'Invalid or expired OTP' });
-        }
-
-        // Mark user as verified and clear OTP fields
-        user.isVerified = true;
-        user.otp = undefined;
-        user.otpExpires = undefined;
-        await user.save();
-
-        res.status(200).json({ message: 'Email verified successfully' });
-    } catch (err) {
-        console.error('Error verifying OTP:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /forgot-password: Initiate password reset process
-router.post('/forgot-password', async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        if (!email) {
-            return res.status(400).json({ error: 'Email is required' });
-        }
-
-        // Find user by email
-        const user = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Generate reset token
-        const resetToken = jwt.sign(
-            { id: user._id },
-            process.env.JWT_SECRET,
-            { expiresIn: '15m' }
-        );
-
-        // Save reset token to user document
-        user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-        await user.save();
-
-        // Send password reset email
-        const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: email,
-            subject: 'Password Reset Request',
-            html: `
-                <p>You requested a password reset. Click the link below to reset your password:</p>
-                <a href="${resetUrl}">${resetUrl}</a>
-                <p>This link will expire in 15 minutes.</p>
-            `,
-        };
-
-        await transporter.sendMail(mailOptions);
-        console.log(`Password reset email sent to ${email}`);
-
-        res.status(200).json({ message: 'Password reset email sent' });
-    } catch (err) {
-        console.error('Error in forgot password:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /reset-password: Reset user password with token
-router.post('/reset-password', async (req, res) => {
-    try {
-        const { token, newPassword } = req.body;
-
-        if (!token || !newPassword) {
-            return res.status(400).json({ error: 'Token and new password are required' });
-        }
-
-        // Verify token
-        let decoded;
-        try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET);
-        } catch (err) {
-            return res.status(400).json({ error: 'Invalid or expired token' });
-        }
-
-        // Find user by ID and check reset token
-        const user = await User.findOne({
-            _id: decoded.id,
-            resetPasswordToken: token,
-            resetPasswordExpires: { $gt: new Date() }
-        });
-
-        if (!user) {
-            return res.status(400).json({ error: 'Invalid or expired token' });
-        }
-
-        // Update password and clear reset token
-        user.password = newPassword;
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
-        await user.save();
-
-        res.status(200).json({ message: 'Password reset successfully' });
-    } catch (err) {
-        console.error('Error resetting password:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // GET /profile: Fetch the authenticated user's profile
 router.get('/profile', authMiddleware, async (req, res) => {
     try {
@@ -340,8 +171,7 @@ router.post(
                 subscription_validity: new Date(),
             });
 
-            // ... rest of the user creation logic remains the same ...
-            // [Previous code for user_id generation and saving]
+            const savedUser = await user.save();
 
             // Send verification OTP
             const otp = otpGenerator.generate(6, {
@@ -457,7 +287,6 @@ router.put(
         }
     }
 );
-
 
 // PUT /:user_id: Update a specific user's details (admin only)
 router.put(
@@ -765,6 +594,7 @@ router.post('/verify-subscription-payment', authMiddleware, async (req, res) => 
         res.status(500).json({ error: `Failed to verify subscription payment: ${err.message}` });
     }
 });
+
 // POST /webhook: Handle Razorpay webhook events for subscription updates
 router.post('/webhook', async (req, res) => {
     try {

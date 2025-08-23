@@ -14,6 +14,11 @@ const cafePortalRoutes = require('./routes/cafePortal');
 const clientPortalRoutes = require('./routes/clientPortal');
 const adminPortalRoutes = require('./routes/adminPortal');
 
+const cookieParser = require('cookie-parser');
+
+// Add this middleware BEFORE your routes
+
+
 // --- FIX: Robust path to the .env file ---
 // This now correctly points to the .env file inside the 'server' directory
 dotenv.config({ path: path.resolve(__dirname, './.env') });
@@ -37,6 +42,8 @@ if (!process.env.JWT_SECRET || !process.env.MONGODB_URI || !process.env.RAZORPAY
 }
 
 const app = express();
+
+app.use(cookieParser());
 
 // Configure CORS
 const corsOptions = {

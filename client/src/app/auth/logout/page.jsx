@@ -1,16 +1,32 @@
 "use client";
-import ThemeToggle from "../../../components/ThemeToggle"; // Import ThemeToggle
-import { useAuth } from "../../Hooks/useAuth"; // Assuming useAuth is a custom hook
+import { useAuth } from "../../../src/contexts/AuthContext";
+import { useEffect } from 'react';
+import ThemeToggle from "../../../components/ThemeToggle";
 
-function MainComponent() {
-  const { logout } = useAuth();
+function SignOutPage() {
+  const { logout, user, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    // If user is not authenticated, redirect to home
+    if (!isAuthenticated()) {
+      window.location.href = '/';
+    }
+  }, [isAuthenticated]);
 
   const handleSignOut = async () => {
-    await logout({
-      callbackUrl: "/",
-      redirect: true,
-    });
+    console.log('Sign out initiated');
+    const success = logout();
+    if (success) {
+      console.log('Sign out successful, redirecting to home');
+      window.location.href = '/';
+    } else {
+      console.error('Sign out failed');
+    }
   };
+
+  if (!isAuthenticated()) {
+    return <div className="flex min-h-screen items-center justify-center">Redirecting...</div>;
+  }
 
   return (
     <div className="flex min-h-screen w-full items-center justify-between px-4 md:px-16 bg-background-light dark:bg-background-dark">
@@ -19,6 +35,11 @@ function MainComponent() {
           Hope I will
           <br />
           see you again
+          {user && (
+            <span className="block text-2xl mt-4">
+              {user.name}
+            </span>
+          )}
         </h1>
 
         <button
@@ -37,11 +58,9 @@ function MainComponent() {
         />
       </div>
 
-      <ThemeToggle /> {/* Add ThemeToggle component */}
+      <ThemeToggle />
     </div>
   );
 }
 
-export default MainComponent;
-
-
+export default SignOutPage;

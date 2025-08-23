@@ -1,83 +1,87 @@
+// Hooks/AuthContext.js
 "use client";
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(null);
+    const [user, setUser] = useState(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [loading, setLoading] = useState(true);
 
-  // Check for existing token on mount
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    if (storedToken) {
-      setToken(storedToken);
-      // Fetch user profile with the token
-      fetchUserProfile(storedToken);
-    } else {
-      setLoading(false);
-    }
-  }, []);
+    // Check authentication status on app load
+    useEffect(() => {
+        checkAuthStatus();
+    }, []);
 
-  const fetchUserProfile = async (authToken) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+    const checkAuthStatus = async () => {
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/profile`, {
+                method: 'GET',
+                credentials: 'include', // Include cookies
+            });
 
-      if (response.ok) {
-        const userData = await response.json();
+            if (response.ok) {
+                const data = await response.json();
+                if (data.isAuthenticated) {
+                    setUser(data.user);
+                    setIsAuthenticated(true);
+                }
+            }
+        } catch (error) {
+            console.error('Auth check failed:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const login = (token, userData) => {
+        // Store token in localStorage for compatibility
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(userData));
+        
         setUser(userData);
-      } else {
-        // Token might be invalid, clear it
-        logout();
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      logout();
-    } finally {
-      setLoading(false);
-    }
-  };
+        setIsAuthenticated(true);
+    };
 
-  const login = (authToken, userData) => {
-    localStorage.setItem('token', authToken);
-    setToken(authToken);
-    setUser(userData);
-  };
+    const logout = async () => {
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signout`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+        } catch (error) {
+            console.error('Logout request failed:', error);
+        }
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
-    window.location.href = '/auth/signin';
-  };
+        // Clear local storage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        setUser(null);
+        setIsAuthenticated(false);
+    };
 
-  const value = {
-    user,
-    token,
-    loading,
-    login,
-    logout,
-    isAuthenticated: !!user && !!token
-  };
+    const value = {
+        user,
+        isAuthenticated,
+        loading,
+        login,
+        logout,
+        checkAuthStatus
+    };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
 };

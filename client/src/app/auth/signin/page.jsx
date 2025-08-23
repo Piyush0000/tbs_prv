@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { useAuth } from "../../Hooks/AuthContext"; // Fixed path
-import ThemeToggle from "../../../components/ThemeToggle"; // Adjust this path as needed
+import { useAuth } from "../../Hooks/AuthContext";
+import ThemeToggle from "../../../components/ThemeToggle";
 
 function MainComponent() {
-    const { login } = useAuth(); // Get login function from context
+    const { login } = useAuth();
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -13,17 +13,12 @@ function MainComponent() {
     const [password, setPassword] = useState("");
     const [passwordVisible, setPasswordVisible] = useState(false);
 
-    // Forgot password states remain the same
+    // Reset password modal states
     const [showResetModal, setShowResetModal] = useState(false);
     const [resetStep, setResetStep] = useState(1);
     const [resetEmail, setResetEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [newPassword, setNewPassword] = useState("");
-    
-    // Google Sign-in states remain the same
-    const [showPhoneModal, setShowPhoneModal] = useState(false);
-    const [googlePhoneNumber, setGooglePhoneNumber] = useState("");
-    const [googleTempData, setGoogleTempData] = useState(null);
 
     const clearMessages = () => {
         setError(null);
@@ -35,6 +30,8 @@ function MainComponent() {
         setLoading(true);
         clearMessages();
 
+        console.log('Starting sign-in process...');
+
         if (!email || !password) {
             setError("Please fill in all fields");
             setLoading(false);
@@ -42,38 +39,61 @@ function MainComponent() {
         }
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signin`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email.toLowerCase(), password }),
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.message || 'Login failed');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+            console.log('API URL:', apiUrl);
+            
+            if (!apiUrl) {
+                throw new Error('API URL not configured. Please set NEXT_PUBLIC_API_URL environment variable.');
             }
 
-            // Use the login function from AuthContext instead of manually setting localStorage
+            console.log('Sending request to:', `${apiUrl}/auth/signin`);
+            console.log('Request data:', { email: email.toLowerCase(), password: '[HIDDEN]' });
+
+            const res = await fetch(`${apiUrl}/auth/signin`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Important: Include cookies
+                body: JSON.stringify({ 
+                    email: email.toLowerCase().trim(), 
+                    password: password.trim() 
+                }),
+            });
+
+            console.log('Response status:', res.status);
+            const data = await res.json();
+            console.log('Response data:', data);
+
+            if (!res.ok) {
+                throw new Error(data.message || `HTTP ${res.status}: Login failed`);
+            }
+
+            // Use the login function from AuthContext
             login(data.token, data.user);
             
             console.log('Login successful, user data:', data.user);
+            setSuccess('Login successful! Redirecting...');
             
-            // Redirect based on user role
-            if (data.user.role === 'admin') {
-                window.location.href = '/AdminDashboard';
-            } else if (data.user.role === 'cafe') {
-                window.location.href = '/CafeDashboard';
-            } else {
-                window.location.href = '/';
-            }
+            // Add a small delay to show success message
+            setTimeout(() => {
+                // Redirect based on user role
+                if (data.user.role === 'admin') {
+                    window.location.href = '/AdminDashboard';
+                } else if (data.user.role === 'cafe') {
+                    window.location.href = '/CafeDashboard';
+                } else {
+                    window.location.href = '/'; // Home page
+                }
+            }, 1000);
+            
         } catch (err) {
-            console.error('Sign-in error:', err.message);
-            setError(err.message || 'Failed to sign in');
+            console.error('Sign-in error:', err);
+            setError(err.message || 'Failed to sign in. Please try again.');
+        } finally {
             setLoading(false);
         }
     };
-
-    // ... rest of your existing functions (handleForgotPassword, handleResetPassword, etc.) remain the same ...
 
     const handleForgotPassword = async () => {
         clearMessages();
@@ -86,7 +106,8 @@ function MainComponent() {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: resetEmail.toLowerCase() }),
+                credentials: 'include',
+                body: JSON.stringify({ email: resetEmail.toLowerCase().trim() }),
             });
             const data = await res.json();
 
@@ -113,7 +134,12 @@ function MainComponent() {
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: resetEmail.toLowerCase(), otp, newPassword }),
+                credentials: 'include',
+                body: JSON.stringify({ 
+                    email: resetEmail.toLowerCase().trim(), 
+                    otp: otp.trim(), 
+                    newPassword: newPassword.trim() 
+                }),
             });
             const data = await res.json();
 
@@ -139,8 +165,6 @@ function MainComponent() {
     const togglePasswordVisibility = () => {
         setPasswordVisible(!passwordVisible);
     };
-
-    // ... rest of your JSX remains exactly the same ...
     
     return (
         <div className="flex min-h-screen bg-background-light dark:bg-background-dark">
@@ -155,10 +179,11 @@ function MainComponent() {
                             <input
                                 type="email"
                                 name="email"
-                                placeholder="Username or Email"
+                                placeholder="Email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full px-6 py-3 rounded-full border border-border-light dark:border-border-dark focus:border-primary-light dark:focus:border-primary-dark focus:ring-1 focus:ring-primary-light dark:focus:ring-primary-dark transition-colors"
+                                required
                             />
                         </div>
 
@@ -170,6 +195,7 @@ function MainComponent() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="w-full px-6 py-3 rounded-full border border-border-light dark:border-border-dark focus:border-primary-light dark:focus:border-primary-dark focus:ring-1 focus:ring-primary-light dark:focus:ring-primary-dark transition-colors"
+                                required
                             />
                             <button
                                 type="button"
@@ -196,7 +222,7 @@ function MainComponent() {
                             </div>
                         )}
                         {success && (
-                             <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-full relative" role="alert">
+                            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-full relative" role="alert">
                                 <span className="block sm:inline">{success}</span>
                             </div>
                         )}
@@ -214,10 +240,6 @@ function MainComponent() {
                         <div className="flex-1 border-t border-border-light dark:border-border-dark"></div>
                         <span className="px-4 text-gray-500 dark:text-gray-400 text-sm">Or</span>
                         <div className="flex-1 border-t border-border-light dark:border-border-dark"></div>
-                    </div>
-
-                    <div className="space-y-4">
-                        {/* Google and Apple buttons remain the same */}
                     </div>
 
                     <p className="mt-8 text-center text-gray-600 dark:text-gray-400 text-sm">
@@ -241,7 +263,7 @@ function MainComponent() {
 
             <ThemeToggle />
             
-            {/* Forgot Password Modal - remains the same */}
+            {/* Reset Password Modal */}
             {showResetModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-background-light dark:bg-background-dark p-6 rounded-lg max-w-md w-full">
@@ -288,7 +310,14 @@ function MainComponent() {
                         <div className="flex justify-end space-x-4 mt-6">
                             <button
                                 type="button"
-                                onClick={() => { setShowResetModal(false); clearMessages(); setResetStep(1); }}
+                                onClick={() => { 
+                                    setShowResetModal(false); 
+                                    clearMessages(); 
+                                    setResetStep(1); 
+                                    setResetEmail("");
+                                    setOtp("");
+                                    setNewPassword("");
+                                }}
                                 className="rounded-full border border-border-light dark:border-border-dark px-4 py-2"
                             >
                                 Cancel
@@ -304,7 +333,7 @@ function MainComponent() {
                                 </button>
                             )}
                             {resetStep === 2 && (
-                                 <button
+                                <button
                                     type="button"
                                     onClick={handleResetPassword}
                                     disabled={loading}
