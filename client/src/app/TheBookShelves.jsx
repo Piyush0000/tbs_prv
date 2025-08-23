@@ -27,6 +27,15 @@ function TheBookShelves() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+  // Check if user authentication state has changed
+  if (user) {
+    console.log('User authenticated:', user);
+  } else if (!loading) {
+    console.log('User not authenticated');
+  }
+}, [user, loading]);
+
   const fetchBooks = async (query = "") => {
     setLoadingBooks(true);
     try {
@@ -184,6 +193,8 @@ function TheBookShelves() {
         location="New Town, Kolkata"
         onLocationChange={() => {}}
         onSearch={handleSearch}
+
+        
       />
       <main className="px-4 sm:px-4 md:px-6 py-8 w-full sm:w-[80%] mx-auto">
         {!searchQuery && (

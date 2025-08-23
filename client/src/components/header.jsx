@@ -1,91 +1,168 @@
-"use client";
-import Link from "next/link";
-import { useState } from "react";
-import { useAuth } from "../app/Hooks/useAuth";
+import React, { useState, useEffect, useRef } from "react";
 
-const Header = ({ onSearch }) => {
-  const { user, isLoggedIn, logout } = useAuth();
+// The 'onLogout' prop is added to handle the logout action
+function Header({ user, onSearch, onLogout }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
 
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
-  };
+  // Check if user is authenticated
+  const isAuthenticated = user && user.user_id;
 
-  const handleMobileLogout = () => {
-    logout();
-    toggleMenu();
-  };
+  // Use standard <a> tags instead of Next.js <Link>
+  const Link = ({ href, children, ...props }) => <a href={href} {...props}>{children}</a>;
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [userMenuRef]);
+
 
   return (
-    <header className="border-b border-border-light dark:border-border-dark px-2 md:px-8 py-3 bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
-      <div className="w-full sm:w-[80%] mx-auto flex items-center justify-between gap-2">
-        <div className="flex items-center">
-          <Link href="/">
-            <div className="w-10 h-10 cursor-pointer">
-              <img src="/Logo-Lightmode.png" alt="The Book Shelves Logo" className="w-full h-full object-contain dark:hidden" />
-              <img src="/Logo-Darkmode.png" alt="The Book Shelves Logo" className="w-full h-full object-contain hidden dark:block" />
-            </div>
+    <header className="sticky top-0 z-50 w-full border-b border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark">
+      <div className="container flex h-16 items-center justify-between px-4 sm:px-6 space-x-4">
+        {/* Logo */}
+        <div className="flex-shrink-0">
+          <Link href="/" className="flex items-center space-x-2">
+            <img
+              src="/Logo-Lightmode.png"
+              alt="The Book Shelves Logo"
+              className="h-8 w-auto dark:hidden"
+              onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/100x32/ffffff/000000?text=Logo'; }}
+            />
+            <img
+              src="/Logo-Darkmode.png"
+              alt="The Book Shelves Logo"
+              className="h-8 w-auto hidden dark:block"
+              onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/100x32/000000/ffffff?text=Logo'; }}
+            />
           </Link>
         </div>
 
-        <div className="flex-1 md:flex hidden items-center justify-center">
-          <div className="relative w-full max-w-lg lg:max-w-xl">
-            <div className="flex items-center bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-full p-1.5">
-              <input type="text" name="search" placeholder={isLoggedIn ? "Search books, authors, or cafes..." : "Search books or authors..."} className="flex-1 text-sm outline-none bg-transparent px-2 py-1" onChange={onSearch}/>
-              <button onClick={onSearch} className="ml-1.5 p-1.5 bg-primary-light dark:bg-primary-dark rounded-full" aria-label="Search">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              </button>
+        {/* Search Bar - Desktop */}
+        <div className="hidden md:flex flex-1 max-w-lg mx-auto">
+            <div className="relative w-full">
+                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                 </div>
+                <input
+                    type="text"
+                    placeholder="Search books, authors, or cafes..."
+                    onChange={onSearch}
+                    className="w-full py-2 pl-10 pr-4 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
+                />
             </div>
-          </div>
         </div>
 
-        <nav className="hidden md:flex items-center gap-6">
-          <Link href="/how-it-works" className="font-header">How it works?</Link>
-          <Link href="/AboutUs" className="font-header">About</Link>
-          <Link href="/discover" className="font-header">Discover</Link>
-          {isLoggedIn && user ? (
-            <div className="flex items-center gap-4">
-              <Link href="/profile" className="font-semibold hover:text-primary-light">
-                Hi, {user.name}
-              </Link>
-              <button onClick={logout} className="bg-primary-light text-white dark:bg-primary-dark dark:text-black px-4 py-1.5 rounded-full text-sm font-header hover:bg-opacity-90">
-                Log out
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center space-x-6">
+          <Link
+            href="/how-it-works"
+            className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark transition-colors font-medium"
+          >
+            How it works?
+          </Link>
+          <Link
+            href="/about"
+            className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark transition-colors font-medium"
+          >
+            About
+          </Link>
+          <Link
+            href="/discover"
+            className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark transition-colors font-medium"
+          >
+            Discover
+          </Link>
+          
+          {isAuthenticated ? (
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="flex items-center space-x-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
+              >
+                <span>{user.name || 'User'}</span>
+                 <svg className={`h-4 w-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
               </button>
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md shadow-lg py-1">
+                  <Link href="/profile" className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700">Profile</Link>
+                  <button onClick={onLogout} className="w-full text-left block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700">Logout</button>
+                </div>
+              )}
             </div>
           ) : (
-            <Link href="/auth/signin" className="bg-primary-light text-white dark:bg-primary-dark dark:text-black px-4 py-1.5 rounded-full text-sm font-header hover:bg-opacity-90">
+            <Link
+              href="/auth/signin"
+              className="inline-flex items-center px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
+            >
               Log in
             </Link>
           )}
         </nav>
 
+        {/* Mobile Menu Button */}
         <div className="md:hidden flex items-center">
-          <button onClick={toggleMenu} aria-label="Toggle menu">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="p-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+            aria-label="Open menu"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
           </button>
         </div>
       </div>
 
+      {/* Mobile Menu Dropdown */}
       {isMenuOpen && (
-        <div className="absolute top-16 right-0 w-full bg-background-light dark:bg-background-dark border-b md:hidden z-50">
-          <nav className="flex flex-col p-4">
-            <Link href="/how-it-works" className="py-2 font-header" onClick={toggleMenu}>How it works?</Link>
-            <Link href="/AboutUs" className="py-2 font-header" onClick={toggleMenu}>About</Link>
-            <Link href="/discover" className="py-2 font-header" onClick={toggleMenu}>Discover</Link>
-            <hr className="my-2 border-border-light dark:border-border-dark"/>
-            {isLoggedIn ? (
+        <div className="md:hidden">
+            <div className="px-4 pb-4 pt-2">
+                 <input
+                    type="text"
+                    placeholder="Search books or cafes..."
+                    onChange={onSearch}
+                    className="w-full px-4 py-2 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
+                />
+            </div>
+          <nav className="flex flex-col items-center space-y-2 py-4 border-t border-border-light dark:border-border-dark">
+            <Link href="/how-it-works" className="py-2">How it works?</Link>
+            <Link href="/about" className="py-2">About</Link>
+            <Link href="/discover" className="py-2">Discover</Link>
+            
+            <div className="w-full border-t border-border-light dark:border-border-dark my-2"></div>
+
+            {isAuthenticated ? (
               <>
-                <Link href="/profile" className="py-2 font-header" onClick={toggleMenu}>Profile</Link>
-                <button onClick={handleMobileLogout} className="py-2 text-left text-red-500 font-header">Log out</button>
+                <span className="font-medium">Hello, {user.name || 'User'}</span>
+                <Link href="/profile" className="py-2">Profile</Link>
+                <button onClick={onLogout} className="py-2 text-red-500">Logout</button>
               </>
             ) : (
-              <Link href="/auth/signin" className="py-2 font-header" onClick={toggleMenu}>Log in</Link>
+               <Link
+                  href="/auth/signin"
+                  className="w-3/4 text-center mt-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button"
+                >
+                  Log In
+                </Link>
             )}
           </nav>
         </div>
       )}
     </header>
   );
-};
+}
 
 export default Header;
