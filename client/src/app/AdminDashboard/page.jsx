@@ -20,111 +20,204 @@ function AdminDashboard() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null); // Add debug info state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState(null);
+  const [importSuccess, setImportSuccess] = useState(null);
 
   const modalScrollRef = useRef(null);
   const modalIsDown = useRef(false);
   const modalStartX = useRef(0);
   const modalScrollLeft = useRef(0);
 
-  // Fetch data on mount (unchanged)
+  // Enhanced fetch function with better error handling
+  const safeFetch = async (url, options = {}, abortSignal = null) => {
+    try {
+      console.log(`Making request to: ${url}`);
+      console.log(`Request options:`, options);
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: abortSignal,
+      });
+      
+      console.log(`Response status: ${response.status}`);
+      console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
+      
+      // Check content type before trying to parse JSON
+      const contentType = response.headers.get('content-type');
+      console.log(`Content-Type: ${contentType}`);
+      
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.log(`Non-JSON response received:`, textResponse.substring(0, 200));
+        throw new Error(`Server returned HTML instead of JSON. Status: ${response.status}. This usually means the API endpoint doesn't exist or there's a server error.`);
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`API Error (${response.status}): ${errorData.error || errorData.message || response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+      console.error(`Fetch error for ${url}:`, error);
+      throw error;
+    }
+  };
+
+  // Fetch data on mount with enhanced error handling
   useEffect(() => {
     const abortController = new AbortController();
+    
     const fetchData = async () => {
       if (loading) return;
       setLoading(true);
+      setError(null);
+      setDebugInfo(null);
+      
       try {
+        // Check if API URL is set
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        console.log('API URL:', apiUrl);
+        
+        if (!apiUrl) {
+          throw new Error('NEXT_PUBLIC_API_URL environment variable is not set');
+        }
+        
+        setDebugInfo(`Using API URL: ${apiUrl}`);
+        
         let token = localStorage.getItem("token");
         if (!token) {
-          window.location.href = "/auth/signin";
-          return;
+          throw new Error("No authentication token found");
         }
 
-        const profileRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
-        if (!profileRes.ok) {
-          if (profileRes.status === 401) {
-            token = await refreshToken();
-            if (!token) {
-              throw new Error("Failed to refresh token");
-            }
-          } else {
-            const errorData = await profileRes.json();
-            throw new Error(`Invalid token: ${errorData.error || profileRes.statusText}`);
-          }
-        }
-        const userData = await profileRes.json();
+        console.log('Token found, length:', token.length);
+
+        // Step 1: Verify profile and admin access
+        console.log('Step 1: Checking profile...');
+        const userData = await safeFetch(
+          `${apiUrl}/users/profile`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          },
+          abortController.signal
+        );
+        
+        console.log('Profile data:', userData);
+        
         if (userData.role !== "admin") {
-          throw new Error("Admin access required");
+          throw new Error("Admin access required. Current role: " + userData.role);
         }
 
-        const booksRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/inventory`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
-        if (!booksRes.ok) {
-          const errorData = await booksRes.json();
-          throw new Error(`Failed to fetch books: ${errorData.error || booksRes.statusText}`);
+        // Step 2: Fetch books
+        console.log('Step 2: Fetching books...');
+        try {
+          const booksData = await safeFetch(
+            `${apiUrl}/admin/inventory`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            },
+            abortController.signal
+          );
+          
+          const sanitizedBooks = Array.isArray(booksData)
+            ? booksData.filter(
+                (book) =>
+                  book &&
+                  typeof book === "object" &&
+                  book.id &&
+                  book.name &&
+                  book.author
+              )
+            : [];
+          setBooks(sanitizedBooks);
+          console.log('Books loaded:', sanitizedBooks.length);
+        } catch (booksError) {
+          console.error('Books fetch failed:', booksError);
+          setBooks([]);
         }
-        const booksData = await booksRes.json();
-        const sanitizedBooks = Array.isArray(booksData)
-          ? booksData.filter(
-              (book) =>
-                book &&
-                typeof book === "object" &&
-                book.id &&
-                book.name &&
-                book.author
-            )
-          : [];
-        setBooks(sanitizedBooks);
 
-        const cafesRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cafes`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
-        if (!cafesRes.ok) {
-          const errorData = await cafesRes.json();
-          throw new Error(`Failed to fetch cafes: ${errorData.error || cafesRes.statusText}`);
+        // Step 3: Fetch cafes
+        console.log('Step 3: Fetching cafes...');
+        try {
+          const cafesData = await safeFetch(
+            `${apiUrl}/cafes`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            },
+            abortController.signal
+          );
+          
+          const sanitizedCafes = Array.isArray(cafesData)
+            ? cafesData.map((cafe) => ({
+                ...cafe,
+                cafe_owner_id: cafe.cafe_owner_id || "",
+              }))
+            : [];
+          setCafes(sanitizedCafes);
+          console.log('Cafes loaded:', sanitizedCafes.length);
+        } catch (cafesError) {
+          console.error('Cafes fetch failed:', cafesError);
+          setCafes([]);
         }
-        const cafesData = await cafesRes.json();
-        const sanitizedCafes = Array.isArray(cafesData)
-          ? cafesData.map((cafe) => ({
-              ...cafe,
-              cafe_owner_id: cafe.cafe_owner_id || "",
-            }))
-          : [];
-        setCafes(sanitizedCafes);
 
-        const usersRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
-        if (!usersRes.ok) {
-          const errorData = await usersRes.json();
-          throw new Error(`Failed to fetch users: ${errorData.error || usersRes.statusText}`);
+        // Step 4: Fetch users
+        console.log('Step 4: Fetching users...');
+        try {
+          const usersData = await safeFetch(
+            `${apiUrl}/users`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            },
+            abortController.signal
+          );
+          
+          setUsers(usersData);
+          console.log('Users loaded:', usersData.length);
+        } catch (usersError) {
+          console.error('Users fetch failed:', usersError);
+          setUsers([]);
         }
-        const usersData = await usersRes.json();
-        setUsers(usersData);
 
-        const transactionsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/transactions`, {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: abortController.signal,
-        });
-        if (!transactionsRes.ok) {
-          const errorData = await transactionsRes.json();
-          throw new Error(`Failed to fetch transactions: ${errorData.error || transactionsRes.statusText}`);
+        // Step 5: Fetch transactions
+        console.log('Step 5: Fetching transactions...');
+        try {
+          const transactionsData = await safeFetch(
+            `${apiUrl}/transactions`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            },
+            abortController.signal
+          );
+          
+          setTransactions(transactionsData);
+          console.log('Transactions loaded:', transactionsData.length);
+        } catch (transactionsError) {
+          console.error('Transactions fetch failed:', transactionsError);
+          setTransactions([]);
         }
-        const transactionsData = await transactionsRes.json();
-        setTransactions(transactionsData);
+
       } catch (err) {
         if (err.name === "AbortError") {
           console.log("Fetch aborted");
           return;
         }
+        
+        console.error("Admin Dashboard Error:", err);
         setError(err.message);
-        if (err.message.includes("Invalid token") || err.message.includes("Admin access required")) {
+        setDebugInfo(`Error details: ${err.message}`);
+        
+        // Handle authentication errors
+        if (err.message.includes("No authentication token") || 
+            err.message.includes("Admin access required") ||
+            err.message.includes("401")) {
           localStorage.removeItem("token");
           window.location.href = "/auth/signin";
         }
@@ -140,6 +233,7 @@ function AdminDashboard() {
     };
   }, []);
 
+  // ... (rest of your existing functions remain the same)
   const handleModalMouseDown = (e) => {
     modalIsDown.current = true;
     modalScrollRef.current.classList.add("dragging");
@@ -192,7 +286,7 @@ function AdminDashboard() {
         { name: "location", label: "Location *", type: "text" },
         { name: "image_url", label: "Image URL", type: "text" },
         { name: "audio_url", label: "Audio URL", type: "text" },
-        { name: "gmap_url", label: "map URL", type: "text" },
+        { name: "gmap_url", label: "Map URL", type: "text" },
         { name: "average_bill", label: "Average Bill", type: "number", min: 0 },
         { name: "discount", label: "Discount", type: "text"},
         { name: "ratings", label: "Ratings (0-5)", type: "number", min: 0, max: 5 },
@@ -279,6 +373,288 @@ function AdminDashboard() {
     setModalError(null);
   };
 
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportError(null);
+    setImportSuccess(null);
+    setImportLoading(false);
+  };
+
+  const closeExportModal = () => {
+    setShowExportModal(false);
+  };
+
+  const handleImportClick = () => {
+    console.log('Import button clicked!', { activeTab });
+    alert(`Import button works! Current tab: ${activeTab}`);
+    setShowImportModal(true);
+  };
+
+  const handleExportClick = () => {
+    console.log('Export button clicked!', { activeTab });
+    alert(`Export button works! Current tab: ${activeTab}`);
+    
+    let data = [];
+    let filename = '';
+    
+    switch(activeTab) {
+      case 'books':
+        data = books;
+        filename = 'books_export.csv';
+        break;
+      case 'cafes':
+        data = cafes;
+        filename = 'cafes_export.csv';
+        break;
+      case 'users':
+        data = users;
+        filename = 'users_export.csv';
+        break;
+      case 'transactions':
+        data = transactions;
+        filename = 'transactions_export.csv';
+        break;
+      default:
+        console.log('Unknown activeTab:', activeTab);
+        alert('Unknown tab selected');
+        return;
+    }
+
+    console.log('Export data:', data);
+
+    if (data.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    try {
+      // Convert data to CSV
+      const headers = Object.keys(data[0]);
+      console.log('CSV Headers:', headers);
+      
+      const csvContent = [
+        headers.join(','),
+        ...data.map(row => 
+          headers.map(header => {
+            const value = row[header];
+            // Handle values that contain commas or quotes
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+              return `"${String(value).replace(/"/g, '""')}"`;
+            }
+            return value !== null && value !== undefined ? value : '';
+          }).join(',')
+        )
+      ].join('\n');
+
+      console.log('CSV Content (first 200 chars):', csvContent.substring(0, 200));
+
+      // Create and download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log('File download initiated:', filename);
+      alert(`CSV file ${filename} downloaded successfully!`);
+      setShowExportModal(true);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Error exporting CSV: ' + error.message);
+    }
+  };
+
+  // Legacy function for modal usage
+  const handleExportCSV = () => {
+    handleExportClick();
+  };
+
+  const handleFileSelect = (event) => {
+    console.log('File selected:', event.target.files[0]);
+    const file = event.target.files[0];
+    if (file && file.type === 'text/csv') {
+      setImportFile(file);
+      setImportError(null);
+      console.log('Valid CSV file selected:', file.name);
+    } else {
+      console.log('Invalid file type:', file?.type);
+      setImportError('Please select a valid CSV file');
+      setImportFile(null);
+    }
+  };
+
+  const handleImportCSV = async () => {
+    console.log('handleImportCSV called', { importFile, activeTab });
+    
+    if (!importFile) {
+      setImportError('Please select a file first');
+      return;
+    }
+
+    setImportLoading(true);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      console.log('Reading file...');
+      const text = await importFile.text();
+      console.log('File content (first 200 chars):', text.substring(0, 200));
+      
+      const lines = text.split('\n').filter(line => line.trim());
+      console.log('Total lines:', lines.length);
+      
+      if (lines.length < 2) {
+        throw new Error('CSV file must contain at least a header row and one data row');
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      console.log('Headers:', headers);
+      
+      const rows = lines.slice(1).map((line, lineIndex) => {
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(current.trim().replace(/^"|"$/g, ''));
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim().replace(/^"|"$/g, ''));
+        
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index] || '';
+        });
+        console.log(`Row ${lineIndex + 1}:`, row);
+        return row;
+      });
+
+      console.log('Parsed rows:', rows.length);
+
+      let token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+      const errors = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        try {
+          let url;
+          let requestData;
+
+          if (activeTab === 'books') {
+            url = `${process.env.NEXT_PUBLIC_API_URL}/admin/books`;
+            requestData = {
+              name: row.name || row.Name || '',
+              author: row.author || row.Author || '',
+              language: row.language || row.Language || '',
+              publisher: row.publisher || row.Publisher || undefined,
+              genre: row.genre || row.Genre || undefined,
+              description: row.description || row.Description || undefined,
+              image_url: row.image_url || row.Image_URL || undefined,
+              audio_url: row.audio_url || row.Audio_URL || undefined,
+              pdf_url: row.pdf_url || row.PDF_URL || undefined,
+              ratings: Number(row.ratings || row.Ratings) || 0,
+              is_free: (row.is_free || row.Is_Free || '').toLowerCase() === 'true',
+              available: (row.available || row.Available || '').toLowerCase() !== 'false',
+              keeper_id: row.keeper_id || row.Keeper_ID || undefined,
+            };
+          } else if (activeTab === 'cafes') {
+            url = `${process.env.NEXT_PUBLIC_API_URL}/cafes`;
+            requestData = {
+              name: row.name || row.Name || '',
+              area: row.area || row.Area || undefined,
+              city: row.city || row.City || undefined,
+              location: row.location || row.Location || '',
+              image_url: row.image_url || row.Image_URL || undefined,
+              audio_url: row.audio_url || row.Audio_URL || undefined,
+              gmap_url: row.gmap_url || row.Gmap_URL || undefined,
+              average_bill: Number(row.average_bill || row.Average_Bill) || 0,
+              discount: row.discount || row.Discount || undefined,
+              ratings: Number(row.ratings || row.Ratings) || 0,
+              specials: row.specials || row.Specials || undefined,
+              cafe_owner_id: row.cafe_owner_id || row.Cafe_Owner_ID || undefined,
+            };
+          } else if (activeTab === 'users') {
+            url = `${process.env.NEXT_PUBLIC_API_URL}/users`;
+            requestData = {
+              name: row.name || row.Name || '',
+              email: row.email || row.Email || '',
+              phone_number: row.phone_number || row.Phone_Number || '',
+              password: row.password || row.Password || 'defaultPassword123',
+              subscription_type: row.subscription_type || row.Subscription_Type || 'basic',
+              role: row.role || row.Role || 'user',
+            };
+          }
+
+          console.log(`Processing row ${i + 1}:`, requestData);
+
+          const response = await safeFetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(requestData),
+          });
+
+          console.log(`Row ${i + 1} success:`, response);
+          successCount++;
+
+          // Update local state
+          if (activeTab === 'books' && response.book) {
+            setBooks(prev => [...prev, response.book]);
+          } else if (activeTab === 'cafes' && response.cafe) {
+            setCafes(prev => [...prev, response.cafe]);
+          } else if (activeTab === 'users' && response.user) {
+            setUsers(prev => [...prev, response.user]);
+          }
+
+        } catch (error) {
+          console.error(`Row ${i + 1} error:`, error);
+          errorCount++;
+          errors.push(`Row ${i + 2}: ${error.message}`);
+        }
+      }
+
+      console.log(`Import completed. Success: ${successCount}, Errors: ${errorCount}`);
+      setImportSuccess(`Successfully imported ${successCount} records. ${errorCount} errors occurred.`);
+      
+      if (errors.length > 0 && errors.length <= 5) {
+        setImportError('Some errors occurred:\n' + errors.join('\n'));
+      } else if (errors.length > 5) {
+        setImportError(`${errorCount} errors occurred. First 5 errors:\n` + errors.slice(0, 5).join('\n'));
+      }
+
+      // Clear file input
+      const fileInput = document.getElementById('csv-file-input');
+      if (fileInput) fileInput.value = '';
+      setImportFile(null);
+
+    } catch (error) {
+      console.error('Import error:', error);
+      setImportError(error.message);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormValues({
@@ -355,11 +731,7 @@ function AdminDashboard() {
         };
       }
 
-      console.log("Sending request to:", url);
-      console.log("Request body:", requestData);
-      console.log("Initial token:", token);
-
-      let res = await fetch(url, {
+      const responseData = await safeFetch(url, {
         method: method,
         headers: {
           "Content-Type": "application/json",
@@ -367,44 +739,6 @@ function AdminDashboard() {
         },
         body: JSON.stringify(requestData),
       });
-
-      if (res.status === 401) {
-        console.log("Received 401, attempting to refresh token...");
-        token = await refreshToken();
-        if (!token) {
-          throw new Error("Failed to refresh token");
-        }
-        console.log("New token after refresh:", token);
-        localStorage.setItem("token", token);
-        res = await fetch(url, {
-          method: method,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(requestData),
-        });
-      }
-
-      console.log("Response status after retry:", res.status);
-
-      if (!res.ok) {
-        const contentType = res.headers.get("content-type");
-        let errorMessage = `Failed to ${isEditing ? "update" : "add"} ${activeTab.slice(0, -1)}: ${res.statusText} (${res.status})`;
-
-        if (contentType && contentType.includes("application/json")) {
-          const errorData = await res.json();
-          errorMessage = `Failed to ${isEditing ? "update" : "add"} ${activeTab.slice(0, -1)}: ${errorData.error || res.statusText} (${res.status})`;
-        } else {
-          const text = await res.text();
-          console.log("Raw response:", text);
-          errorMessage = `Failed to ${isEditing ? "update" : "add"} ${activeTab.slice(0, -1)}: Received non-JSON response (${res.status})`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const responseData = await res.json();
-      console.log("Response data:", responseData);
 
       if (isEditing) {
         if (activeTab === "books") {
@@ -450,8 +784,193 @@ function AdminDashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-600">{error}</div>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-red-800 mb-4">Error Loading Admin Dashboard</h2>
+            <p className="text-red-700 mb-4">{error}</p>
+            {debugInfo && (
+              <div className="bg-gray-100 p-3 rounded text-sm text-gray-600 mb-4">
+                <strong>Debug Info:</strong> {debugInfo}
+              </div>
+            )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeImportModal();
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">Import {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} from CSV</h2>
+            
+            {importError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-red-700 text-sm whitespace-pre-line">{importError}</p>
+              </div>
+            )}
+            
+            {importSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                <p className="text-green-700 text-sm">{importSuccess}</p>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select CSV File
+              </label>
+              <input
+                id="csv-file-input"
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {importFile && (
+                <p className="text-sm text-green-600 mt-1">Selected: {importFile.name}</p>
+              )}
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <h4 className="font-medium text-sm text-gray-700 mb-2">CSV Format Requirements:</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                {activeTab === 'books' && (
+                  <>
+                    <li>• Required: name, author, language</li>
+                    <li>• Optional: publisher, genre, description, image_url, audio_url, pdf_url, ratings, is_free, available, keeper_id</li>
+                  </>
+                )}
+                {activeTab === 'cafes' && (
+                  <>
+                    <li>• Required: name, location</li>
+                    <li>• Optional: area, city, image_url, audio_url, gmap_url, average_bill, discount, ratings, specials, cafe_owner_id</li>
+                  </>
+                )}
+                {activeTab === 'users' && (
+                  <>
+                    <li>• Required: name, email, phone_number</li>
+                    <li>• Optional: password (defaults to 'defaultPassword123'), subscription_type (defaults to 'basic'), role (defaults to 'user')</li>
+                  </>
+                )}
+                <li>• First row must contain column headers</li>
+                <li>• Use commas as separators</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeImportModal}
+                disabled={importLoading}
+                className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  console.log('Import CSV button clicked in modal');
+                  handleImportCSV();
+                }}
+                disabled={!importFile || importLoading}
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
+              >
+                {importLoading && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                <span>{importLoading ? 'Importing...' : 'Import CSV'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeExportModal();
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">Export {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} to CSV</h2>
+            
+            <div className="mb-6">
+              <p className="text-gray-600 mb-2">
+                This will export all {activeTab} data to a CSV file that you can open in Excel or other spreadsheet applications.
+              </p>
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-sm text-blue-700">
+                  <strong>Records to export:</strong> {
+                    activeTab === 'books' ? books.length :
+                    activeTab === 'cafes' ? cafes.length :
+                    activeTab === 'users' ? users.length :
+                    transactions.length
+                  } items
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeExportModal}
+                className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  console.log('Export download button clicked');
+                  handleExportCSV();
+                }}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Download CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+            <div className="space-y-2 text-sm text-red-600">
+              <p><strong>Common causes:</strong></p>
+              <ul className="list-disc ml-5 space-y-1">
+                <li>API server is not running</li>
+                <li>Wrong API URL in environment variables</li>
+                <li>API endpoints don't exist</li>
+                <li>CORS issues</li>
+                <li>Authentication token expired</li>
+              </ul>
+            </div>
+            <div className="mt-6 space-x-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  window.location.href = "/auth/signin";
+                }}
+                className="px-4 py-2 border border-red-600 text-red-600 rounded hover:bg-red-50"
+              >
+                Sign In Again
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -459,7 +978,15 @@ function AdminDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-gray-600">Loading Admin Dashboard...</div>
+          {debugInfo && (
+            <div className="mt-4 text-sm text-gray-500 max-w-md">
+              {debugInfo}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -491,14 +1018,36 @@ function AdminDashboard() {
               </button>
             ))}
           </div>
-          {activeTab !== "transactions" && activeTab !== "users" && (
+          <div className="flex items-center space-x-3">
+            {/* Import/Export Buttons */}
             <button
-              onClick={openAddModal}
-              className="px-4 py-2 rounded-full bg-green-600 text-white font-medium hover:bg-green-700"
+              onClick={handleImportClick}
+              className="px-4 py-2 rounded-full bg-purple-600 text-white font-medium hover:bg-purple-700 flex items-center space-x-2"
             >
-              {activeTab === "books" ? "Add Book" : "Add Cafe"}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+              </svg>
+              <span>Import CSV</span>
             </button>
-          )}
+            <button
+              onClick={handleExportClick}
+              className="px-4 py-2 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <span>Export CSV</span>
+            </button>
+            {/* Add Button */}
+            {activeTab !== "transactions" && (
+              <button
+                onClick={openAddModal}
+                className="px-4 py-2 rounded-full bg-green-600 text-white font-medium hover:bg-green-700"
+              >
+                {activeTab === "books" ? "Add Book" : activeTab === "cafes" ? "Add Cafe" : "Add User"}
+              </button>
+            )}
+          </div>
         </div>
 
         {activeTab === "books" && (
