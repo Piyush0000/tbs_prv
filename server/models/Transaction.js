@@ -29,7 +29,7 @@ transactionSchema.pre('save', async function (next) {
       while (!isUnique && attempts < maxAttempts) {
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).substring(2, 8); // 6-character random string
-        const newTransactionId = `TXN_${timestamp}_${randomStr}`;
+        const newTransactionId = `TXN_${timestamp}_${randomStr}`; // ranndom transaction ID
 
         console.log(`Attempt ${attempts + 1}: Checking uniqueness of transaction_id: ${newTransactionId}`);
         const existingTransaction = await mongoose.models.Transaction.findOne({ transaction_id: newTransactionId });

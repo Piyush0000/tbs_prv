@@ -1,21 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-// --- Mock Database ---
-// In a real application, you would fetch this from your backend.
-const MOCK_DATABASE = {
-  users: {
-    "user-123-abc": { name: "Alice" },
-    "user-456-def": { name: "Bob" },
-  },
-  books: {
-    "book-789-xyz": { title: "The Great Gatsby" },
-    "book-101-pqr": { title: "To Kill a Mockingbird" },
-  },
-};
-// --- End Mock Database ---
-
-
 function QRScanner({ onScanned }) {
   const [scannedData, setScannedData] = useState({ user: null, book: null });
   const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookQR', 'bookCover'
@@ -25,23 +10,50 @@ function QRScanner({ onScanned }) {
   const [info, setInfo] = useState("Select a scan mode to begin.");
   const [hasPermission, setHasPermission] = useState(null);
   const [isJsqrLoaded, setIsJsqrLoaded] = useState(false);
+  const [debugLog, setDebugLog] = useState([]);
+  
+  // New states for book suggestions
+  const [bookSuggestions, setBookSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [identifiedTitle, setIdentifiedTitle] = useState("");
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  
+  // Configuration - Update these with your actual values
+  const API_BASE_URL = typeof window !== 'undefined' && window.location ? 
+    `${window.location.protocol}//${window.location.hostname}:5000/api` : 
+    'http://localhost:5000/api';
+  const GEMINI_API_KEY = 'AIzaSyBGGLrTRGa17t6ZSUzSF6Zn1zsXeJhH0Xk';
+  
+  // Debug logging function
+  const addDebugLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = { timestamp, message, type };
+    setDebugLog(prev => [...prev.slice(-4), logEntry]);
+    console.log(`[${timestamp}] [${type.toUpperCase()}] ${message}`);
+  };
   
   // Effect to load the jsQR library from a CDN
   useEffect(() => {
     const script = document.createElement('script');
     script.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
     script.async = true;
-    script.onload = () => setIsJsqrLoaded(true);
+    script.onload = () => {
+      setIsJsqrLoaded(true);
+      addDebugLog("jsQR library loaded successfully");
+    };
+    script.onerror = () => {
+      addDebugLog("Failed to load jsQR library", 'error');
+    };
     document.body.appendChild(script);
     return () => {
+      if (document.body.contains(script)) {
         document.body.removeChild(script);
+      }
     };
   }, []);
-
 
   // Effect to manage camera stream based on scanning state
   useEffect(() => {
@@ -57,6 +69,7 @@ function QRScanner({ onScanned }) {
   const requestCameraPermission = async () => {
     if (streamRef.current) return; // Already have a stream
     try {
+      addDebugLog("Requesting camera permission...");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       });
@@ -65,10 +78,12 @@ function QRScanner({ onScanned }) {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+      addDebugLog("Camera permission granted");
       // Start the scanning loop once permission is granted
       requestAnimationFrame(scanFrame);
     } catch (err) {
       console.error("Camera permission error:", err);
+      addDebugLog(`Camera error: ${err.message}`, 'error');
       setError("Please allow camera access to use the scanner.");
       setHasPermission(false);
       setIsScanning(false);
@@ -81,6 +96,7 @@ function QRScanner({ onScanned }) {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      addDebugLog("Camera stopped");
     }
     if(videoRef.current) {
         videoRef.current.srcObject = null;
@@ -121,44 +137,152 @@ function QRScanner({ onScanned }) {
     }
   }, [isScanning, scanMode, isJsqrLoaded]);
 
+  // Function to fetch user data from MongoDB
+  const fetchUserData = async (userId) => {
+    try {
+      addDebugLog(`Fetching user data for ID: ${userId}`);
+      const response = await fetch(`${API_BASE_URL}/users/${userId}`);
+      
+      if (!response.ok) {
+        throw new Error(`User API call failed with status: ${response.status}`);
+      }
+      
+      const userData = await response.json();
+      addDebugLog(`User found: ${userData.name || userData.username}`);
+      return userData;
+    } catch (err) {
+      addDebugLog(`User fetch error: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Function to fetch book data from MongoDB by ID
+  const fetchBookData = async (bookId) => {
+    try {
+      addDebugLog(`Fetching book data for ID: ${bookId}`);
+      const response = await fetch(`${API_BASE_URL}/books/details/${bookId}`);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Book not found in database');
+        }
+        throw new Error(`Book API call failed with status: ${response.status}`);
+      }
+      
+      const bookData = await response.json();
+      addDebugLog(`Book found: ${bookData.name || bookData.title}`);
+      return bookData;
+    } catch (err) {
+      addDebugLog(`Book fetch error: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Enhanced function to search book in database with suggestions
+  const searchBookWithSuggestions = async (bookTitle) => {
+    try {
+      addDebugLog(`Searching for book with title: "${bookTitle}"`);
+      
+      // Get all books from database
+      const response = await fetch(`${API_BASE_URL}/books`);
+      
+      if (!response.ok) {
+        throw new Error(`Books API call failed with status: ${response.status}`);
+      }
+      
+      const allBooks = await response.json();
+      
+      if (!allBooks || allBooks.length === 0) {
+        throw new Error('No books found in database');
+      }
+
+      const searchTerm = bookTitle.toLowerCase().trim();
+      const searchWords = searchTerm.split(' ').filter(word => word.length > 2);
+      
+      // Calculate similarity scores for all books
+      const scoredBooks = allBooks.map(book => {
+        const bookName = (book.name || book.title || '').toLowerCase();
+        const bookAuthor = (book.author || '').toLowerCase();
+        const bookWords = bookName.split(' ').concat(bookAuthor.split(' '));
+        
+        let score = 0;
+        
+        // Exact match bonus
+        if (bookName === searchTerm) {
+          score += 100;
+        }
+        
+        // Partial match scoring
+        searchWords.forEach(searchWord => {
+          if (bookName.includes(searchWord)) {
+            score += searchWord.length * 2; // Longer words get more weight
+          }
+          if (bookAuthor.includes(searchWord)) {
+            score += searchWord.length; // Author match gets some weight
+          }
+          // Word boundary matches
+          bookWords.forEach(bookWord => {
+            if (bookWord.includes(searchWord)) {
+              score += 1;
+            }
+          });
+        });
+        
+        // Length similarity bonus (books with similar title length might be more relevant)
+        const lengthDiff = Math.abs(bookName.length - searchTerm.length);
+        if (lengthDiff < 5) {
+          score += 5;
+        }
+        
+        return { ...book, score };
+      });
+      
+      // Sort by score and filter out very low scores
+      const suggestions = scoredBooks
+        .filter(book => book.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5); // Top 5 suggestions
+      
+      addDebugLog(`Found ${suggestions.length} potential matches`);
+      
+      return {
+        exactMatch: suggestions.length > 0 && suggestions[0].score >= 100 ? suggestions[0] : null,
+        suggestions: suggestions
+      };
+      
+    } catch (err) {
+      addDebugLog(`Book search error: ${err.message}`, 'error');
+      throw err;
+    }
+  };
 
   // Handles the result of a successful QR code scan
-  const handleQrScan = (data) => {
+  const handleQrScan = async (data) => {
     if (!data) return;
     setIsScanning(false); // Stop scanning after a successful read
     setIsLoading(true);
     setInfo(`Processing ${scanMode === 'userQR' ? 'user' : 'book'}...`);
+    addDebugLog(`QR code scanned: ${data}`);
 
-    // Simulate a database lookup
-    setTimeout(() => {
-      let result = null;
-      let errorMsg = null;
-
+    try {
       if (scanMode === 'userQR') {
-        result = MOCK_DATABASE.users[data];
-        if (result) {
-          setScannedData(prev => ({ ...prev, user: result.name }));
-          setInfo(`User '${result.name}' scanned successfully.`);
-        } else {
-          errorMsg = "User not found in database.";
-        }
+        const userData = await fetchUserData(data);
+        const userName = userData.name || userData.username || 'Unknown User';
+        setScannedData(prev => ({ ...prev, user: userName }));
+        setInfo(`User '${userName}' scanned successfully.`);
       } else if (scanMode === 'bookQR') {
-        result = MOCK_DATABASE.books[data];
-        if (result) {
-          setScannedData(prev => ({ ...prev, book: result.title }));
-          setInfo(`Book '${result.title}' scanned successfully.`);
-        } else {
-          errorMsg = "Book not found in database.";
-        }
+        const bookData = await fetchBookData(data);
+        const bookTitle = bookData.name || bookData.title || 'Unknown Book';
+        setScannedData(prev => ({ ...prev, book: bookTitle }));
+        setInfo(`Book '${bookTitle}' scanned successfully.`);
       }
-
-      if (errorMsg) {
-        setError(errorMsg);
-      }
-      
+    } catch (err) {
+      addDebugLog(`Scan processing error: ${err.message}`, 'error');
+      setError(err.message || `Failed to process ${scanMode === 'userQR' ? 'user' : 'book'}`);
+    } finally {
       setIsLoading(false);
       setScanMode(null); // Reset mode after scan
-    }, 1000); // 1-second delay to simulate network request
+    }
   };
 
   // Handles the book cover scan using Gemini API
@@ -171,6 +295,7 @@ function QRScanner({ onScanned }) {
     setIsLoading(true);
     setInfo("Analyzing book cover...");
     setIsScanning(false); // Pause scanning during analysis
+    addDebugLog("Starting book cover analysis");
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -181,8 +306,9 @@ function QRScanner({ onScanned }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const base64ImageData = canvas.toDataURL("image/png").split(',')[1];
+    addDebugLog(`Image captured, size: ${base64ImageData.length} characters`);
     
-    const prompt = "Identify the title of the book in this image. Respond with only the book title.";
+    const prompt = "Identify the title of the book in this image. Respond with only the book title, nothing else.";
 
     const payload = {
         contents: [
@@ -202,30 +328,74 @@ function QRScanner({ onScanned }) {
     };
 
     try {
-        const apiKey = ""; // Leave empty, handled by environment
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+            throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
+        }
 
+        // Fixed API URL format
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+        
+        addDebugLog("Making Gemini API request...");
+        
         const response = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify(payload)
         });
 
+        addDebugLog(`Gemini API response status: ${response.status}`);
+
         if (!response.ok) {
-            throw new Error(`API call failed with status: ${response.status}`);
+            const errorText = await response.text();
+            addDebugLog(`Gemini API error response: ${errorText}`, 'error');
+            throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
         }
 
         const result = await response.json();
+        addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
+        
         const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (text) {
-            setScannedData(prev => ({ ...prev, book: text.trim() }));
-            setInfo(`Book '${text.trim()}' identified.`);
+            const bookTitle = text.trim();
+            setIdentifiedTitle(bookTitle);
+            addDebugLog(`Book title identified by AI: ${bookTitle}`);
+            
+            // Search for this book in your database with suggestions
+            try {
+              const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
+              
+              if (exactMatch) {
+                // Exact match found
+                const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
+                setScannedData(prev => ({ ...prev, book: finalBookTitle }));
+                setInfo(`Book '${finalBookTitle}' found in database!`);
+                addDebugLog(`Exact match found: ${finalBookTitle}`);
+                setShowSuggestions(false);
+              } else if (suggestions.length > 0) {
+                // Show suggestions
+                setBookSuggestions(suggestions);
+                setShowSuggestions(true);
+                setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
+                addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
+              } else {
+                // No matches found
+                setInfo(`Book '${bookTitle}' identified but not found in library database.`);
+                setShowSuggestions(false);
+                addDebugLog("No matches found in database");
+              }
+            } catch (searchErr) {
+              addDebugLog(`Database search error: ${searchErr.message}`, 'error');
+              setInfo(`Book '${bookTitle}' identified (database search failed)`);
+              setShowSuggestions(false);
+            }
         } else {
             throw new Error("Could not identify the book title from the image.");
         }
     } catch (err) {
-        console.error("Gemini API error:", err);
+        addDebugLog(`Gemini API error: ${err.message}`, 'error');
         setError(err.message || "Failed to analyze book cover.");
     } finally {
         setIsLoading(false);
@@ -234,11 +404,33 @@ function QRScanner({ onScanned }) {
     }
   };
 
+  // Handle selecting a book from suggestions
+  const handleSelectSuggestion = (book) => {
+    const bookTitle = book.name || book.title || 'Unknown Book';
+    setScannedData(prev => ({ ...prev, book: bookTitle }));
+    setInfo(`Selected '${bookTitle}' from suggestions.`);
+    setShowSuggestions(false);
+    setBookSuggestions([]);
+    addDebugLog(`User selected suggestion: ${bookTitle}`);
+  };
+
+  // Handle using the AI-identified title even if not in database
+  const handleUseIdentifiedTitle = () => {
+    setScannedData(prev => ({ ...prev, book: identifiedTitle }));
+    setInfo(`Using identified title '${identifiedTitle}' (not in database).`);
+    setShowSuggestions(false);
+    setBookSuggestions([]);
+    addDebugLog(`User chose to use AI-identified title: ${identifiedTitle}`);
+  };
+
   // Function to set the scanning mode and start the camera
   const startScanMode = (mode) => {
     setError(null);
+    setShowSuggestions(false);
+    setBookSuggestions([]);
     setScanMode(mode);
     setIsScanning(true);
+    addDebugLog(`Starting scan mode: ${mode}`);
     if (mode === 'bookCover') {
         setInfo("Point the camera at the book cover and press 'Scan Cover'");
     } else {
@@ -254,6 +446,11 @@ function QRScanner({ onScanned }) {
     setIsLoading(false);
     setError(null);
     setInfo("Select a scan mode to begin.");
+    setDebugLog([]);
+    setShowSuggestions(false);
+    setBookSuggestions([]);
+    setIdentifiedTitle("");
+    addDebugLog("Scanner reset");
     stopCamera();
   };
   
@@ -262,9 +459,9 @@ function QRScanner({ onScanned }) {
     if (scannedData.user && scannedData.book) {
         onScanned(scannedData);
         setInfo("User and Book successfully scanned! Ready to reset.");
+        addDebugLog("Both user and book scanned successfully");
     }
   }, [scannedData, onScanned]);
-
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
@@ -315,6 +512,53 @@ function QRScanner({ onScanned }) {
                 <p className="text-gray-700">{info}</p>
             )}
         </div>
+
+        {/* --- Book Suggestions --- */}
+        {showSuggestions && bookSuggestions.length > 0 && (
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-3">Select a book from suggestions:</h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {bookSuggestions.map((book, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleSelectSuggestion(book)}
+                  className="w-full text-left p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">{book.name || book.title}</div>
+                  {book.author && (
+                    <div className="text-sm text-gray-600">by {book.author}</div>
+                  )}
+                  {book.genre && (
+                    <div className="text-xs text-gray-500">{book.genre}</div>
+                  )}
+                  <div className="text-xs text-blue-600 mt-1">Match score: {book.score}</div>
+                </button>
+              ))}
+            </div>
+            {identifiedTitle && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <button
+                  onClick={handleUseIdentifiedTitle}
+                  className="w-full p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                >
+                  Use "{identifiedTitle}" (not in database)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- Debug Log --- */}
+        {debugLog.length > 0 && (
+          <div className="bg-gray-900 text-green-400 p-3 rounded-lg text-xs font-mono max-h-32 overflow-y-auto">
+            <div className="text-gray-500 mb-1">Debug Log:</div>
+            {debugLog.map((log, index) => (
+              <div key={index} className={`${log.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                [{log.timestamp}] {log.message}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* --- Scan Controls --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

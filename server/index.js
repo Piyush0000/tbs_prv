@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const path = require('path'); // Import the 'path' module
+const path = require('path');
 const logger = require('./utils/logger');
 const rateLimit = require('express-rate-limit');
 const authRoutes = require('./routes/auth');
@@ -13,27 +13,28 @@ const cafeRoutes = require('./routes/cafes');
 const cafePortalRoutes = require('./routes/cafePortal');
 const clientPortalRoutes = require('./routes/clientPortal');
 const adminPortalRoutes = require('./routes/adminPortal');
+const importRoutes = require('./routes/import'); // Add this line
 
 const cookieParser = require('cookie-parser');
 
-// Add this middleware BEFORE your routes
+// Create uploads directory if it doesn't exist
+const fs = require('fs');
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('Created uploads directory');
+}
 
-
-// --- FIX: Robust path to the .env file ---
-// This now correctly points to the .env file inside the 'server' directory
 dotenv.config({ path: path.resolve(__dirname, './.env') });
-
 
 // Debug: Log all environment variables to verify they are loaded
 console.log('--- Environment Variables Loaded ---');
 console.log('RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID ? 'Loaded' : 'MISSING');
 console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Loaded' : 'MISSING');
 console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'Loaded' : 'MISSING');
-// --- ADDED: Specific logs for email credentials ---
 console.log('EMAIL_USER:', process.env.EMAIL_USER ? process.env.EMAIL_USER : 'MISSING');
 console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'Loaded' : 'MISSING');
 console.log('------------------------------------');
-
 
 // Validate critical environment variables
 if (!process.env.JWT_SECRET || !process.env.MONGODB_URI || !process.env.RAZORPAY_KEY_ID || !process.env.EMAIL_USER) {
@@ -100,6 +101,7 @@ mongoose.connect(process.env.MONGODB_URI, {
         app.use('/api/cafe', cafePortalRoutes);
         app.use('/api/client', clientPortalRoutes);
         app.use('/api/admin', adminPortalRoutes);
+        app.use('/api/import', importRoutes); // Add import routes
 
         // Global error handler
         app.use((err, req, res, next) => {

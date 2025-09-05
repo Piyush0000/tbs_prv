@@ -20,7 +20,7 @@ function AdminDashboard() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [modalError, setModalError] = useState(null);
-  const [debugInfo, setDebugInfo] = useState(null); // Add debug info state
+  const [debugInfo, setDebugInfo] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
@@ -233,7 +233,7 @@ function AdminDashboard() {
     };
   }, []);
 
-  // ... (rest of your existing functions remain the same)
+  // Modal drag handlers
   const handleModalMouseDown = (e) => {
     modalIsDown.current = true;
     modalScrollRef.current.classList.add("dragging");
@@ -259,6 +259,7 @@ function AdminDashboard() {
     modalScrollRef.current.scrollLeft = modalScrollLeft.current - walk;
   };
 
+  // Get modal fields based on active tab
   const getModalFields = () => {
     if (activeTab === "books") {
       return [
@@ -320,6 +321,7 @@ function AdminDashboard() {
     return "";
   };
 
+  // Modal handlers
   const openAddModal = () => {
     if (activeTab === "books") {
       setFormValues({
@@ -385,15 +387,22 @@ function AdminDashboard() {
     setShowExportModal(false);
   };
 
+  // Import/Export handlers
   const handleImportClick = () => {
     console.log('Import button clicked!', { activeTab });
-    alert(`Import button works! Current tab: ${activeTab}`);
+    
+    if (activeTab !== 'books') {
+      alert('CSV import is currently only available for books');
+      return;
+    }
+    
     setShowImportModal(true);
+    setImportError(null);
+    setImportSuccess(null);
   };
 
   const handleExportClick = () => {
     console.log('Export button clicked!', { activeTab });
-    alert(`Export button works! Current tab: ${activeTab}`);
     
     let data = [];
     let filename = '';
@@ -461,7 +470,6 @@ function AdminDashboard() {
       URL.revokeObjectURL(url);
       
       console.log('File download initiated:', filename);
-      alert(`CSV file ${filename} downloaded successfully!`);
       setShowExportModal(true);
     } catch (error) {
       console.error('Export error:', error);
@@ -469,21 +477,30 @@ function AdminDashboard() {
     }
   };
 
-  // Legacy function for modal usage
-  const handleExportCSV = () => {
-    handleExportClick();
-  };
-
   const handleFileSelect = (event) => {
     console.log('File selected:', event.target.files[0]);
     const file = event.target.files[0];
-    if (file && file.type === 'text/csv') {
+    setImportError(null);
+    setImportSuccess(null);
+    
+    if (file) {
+      // Check file type
+      if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+        setImportError('Please select a valid CSV file');
+        setImportFile(null);
+        return;
+      }
+      
+      // Check file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        setImportError('File size must be less than 5MB');
+        setImportFile(null);
+        return;
+      }
+      
       setImportFile(file);
-      setImportError(null);
-      console.log('Valid CSV file selected:', file.name);
+      console.log('Valid CSV file selected:', file.name, 'Size:', file.size);
     } else {
-      console.log('Invalid file type:', file?.type);
-      setImportError('Please select a valid CSV file');
       setImportFile(null);
     }
   };
@@ -496,160 +513,115 @@ function AdminDashboard() {
       return;
     }
 
+    // Only allow books import
+    if (activeTab !== 'books') {
+      setImportError('CSV import is currently only available for books');
+      return;
+    }
+
     setImportLoading(true);
     setImportError(null);
     setImportSuccess(null);
 
     try {
-      console.log('Reading file...');
-      const text = await importFile.text();
-      console.log('File content (first 200 chars):', text.substring(0, 200));
-      
-      const lines = text.split('\n').filter(line => line.trim());
-      console.log('Total lines:', lines.length);
-      
-      if (lines.length < 2) {
-        throw new Error('CSV file must contain at least a header row and one data row');
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-      console.log('Headers:', headers);
-      
-      const rows = lines.slice(1).map((line, lineIndex) => {
-        const values = [];
-        let current = '';
-        let inQuotes = false;
-        
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            values.push(current.trim().replace(/^"|"$/g, ''));
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        values.push(current.trim().replace(/^"|"$/g, ''));
-        
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
-        });
-        console.log(`Row ${lineIndex + 1}:`, row);
-        return row;
-      });
-
-      console.log('Parsed rows:', rows.length);
-
       let token = localStorage.getItem("token");
       if (!token) {
         throw new Error("No authentication token found");
       }
 
-      let successCount = 0;
-      let errorCount = 0;
-      const errors = [];
+      // Create FormData to send the CSV file
+      const formData = new FormData();
+      formData.append('csvFile', importFile);
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        try {
-          let url;
-          let requestData;
+      console.log('Sending CSV file to server for processing...');
+      console.log('File details:', {
+        name: importFile.name,
+        size: importFile.size,
+        type: importFile.type
+      });
 
-          if (activeTab === 'books') {
-            url = `${process.env.NEXT_PUBLIC_API_URL}/admin/books`;
-            requestData = {
-              name: row.name || row.Name || '',
-              author: row.author || row.Author || '',
-              language: row.language || row.Language || '',
-              publisher: row.publisher || row.Publisher || undefined,
-              genre: row.genre || row.Genre || undefined,
-              description: row.description || row.Description || undefined,
-              image_url: row.image_url || row.Image_URL || undefined,
-              audio_url: row.audio_url || row.Audio_URL || undefined,
-              pdf_url: row.pdf_url || row.PDF_URL || undefined,
-              ratings: Number(row.ratings || row.Ratings) || 0,
-              is_free: (row.is_free || row.Is_Free || '').toLowerCase() === 'true',
-              available: (row.available || row.Available || '').toLowerCase() !== 'false',
-              keeper_id: row.keeper_id || row.Keeper_ID || undefined,
-            };
-          } else if (activeTab === 'cafes') {
-            url = `${process.env.NEXT_PUBLIC_API_URL}/cafes`;
-            requestData = {
-              name: row.name || row.Name || '',
-              area: row.area || row.Area || undefined,
-              city: row.city || row.City || undefined,
-              location: row.location || row.Location || '',
-              image_url: row.image_url || row.Image_URL || undefined,
-              audio_url: row.audio_url || row.Audio_URL || undefined,
-              gmap_url: row.gmap_url || row.Gmap_URL || undefined,
-              average_bill: Number(row.average_bill || row.Average_Bill) || 0,
-              discount: row.discount || row.Discount || undefined,
-              ratings: Number(row.ratings || row.Ratings) || 0,
-              specials: row.specials || row.Specials || undefined,
-              cafe_owner_id: row.cafe_owner_id || row.Cafe_Owner_ID || undefined,
-            };
-          } else if (activeTab === 'users') {
-            url = `${process.env.NEXT_PUBLIC_API_URL}/users`;
-            requestData = {
-              name: row.name || row.Name || '',
-              email: row.email || row.Email || '',
-              phone_number: row.phone_number || row.Phone_Number || '',
-              password: row.password || row.Password || 'defaultPassword123',
-              subscription_type: row.subscription_type || row.Subscription_Type || 'basic',
-              role: row.role || row.Role || 'user',
-            };
+      // Send to the correct endpoint for books only
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/import/csv/books`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type header - let browser set it for FormData
+        },
+        body: formData,
+      });
+
+      console.log(`Response status: ${response.status}`);
+
+      const contentType = response.headers.get('content-type');
+      console.log('Response content type:', contentType);
+
+      if (!response.ok) {
+        let errorMessage = `Import failed (${response.status})`;
+        
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+          
+          // Show detailed errors if available
+          if (errorData.errors && errorData.errors.length > 0) {
+            const errorDetails = errorData.errors.slice(0, 5).map(err => 
+              `Row ${err.row}: ${err.error}`
+            ).join('\n');
+            errorMessage += `\n\nFirst ${Math.min(5, errorData.errors.length)} errors:\n${errorDetails}`;
           }
-
-          console.log(`Processing row ${i + 1}:`, requestData);
-
-          const response = await safeFetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(requestData),
-          });
-
-          console.log(`Row ${i + 1} success:`, response);
-          successCount++;
-
-          // Update local state
-          if (activeTab === 'books' && response.book) {
-            setBooks(prev => [...prev, response.book]);
-          } else if (activeTab === 'cafes' && response.cafe) {
-            setCafes(prev => [...prev, response.cafe]);
-          } else if (activeTab === 'users' && response.user) {
-            setUsers(prev => [...prev, response.user]);
-          }
-
-        } catch (error) {
-          console.error(`Row ${i + 1} error:`, error);
-          errorCount++;
-          errors.push(`Row ${i + 2}: ${error.message}`);
+        } else {
+          const textResponse = await response.text();
+          console.log('Non-JSON error response:', textResponse);
+          errorMessage = `Server error: ${textResponse.substring(0, 200)}`;
         }
+        
+        throw new Error(errorMessage);
       }
 
-      console.log(`Import completed. Success: ${successCount}, Errors: ${errorCount}`);
-      setImportSuccess(`Successfully imported ${successCount} records. ${errorCount} errors occurred.`);
+      const result = await response.json();
+      console.log('Import result:', result);
+
+      // Handle the response
+      const { insertedCount, errorCount, errors, insertedData, totalProcessed } = result;
+
+      // Build success message
+      let successMessage = `Successfully processed ${totalProcessed || 0} rows.`;
+      if (insertedCount > 0) {
+        successMessage += ` ${insertedCount} books imported successfully.`;
+      }
+
+      setImportSuccess(successMessage);
       
-      if (errors.length > 0 && errors.length <= 5) {
-        setImportError('Some errors occurred:\n' + errors.join('\n'));
-      } else if (errors.length > 5) {
-        setImportError(`${errorCount} errors occurred. First 5 errors:\n` + errors.slice(0, 5).join('\n'));
+      // Update local state with imported books if available
+      if (insertedData && insertedData.length > 0) {
+        setBooks(prev => [...prev, ...insertedData]);
+        console.log(`Added ${insertedData.length} books to local state`);
+      }
+      
+      // Show errors if any
+      if (errorCount > 0 && errors && errors.length > 0) {
+        const errorMessages = errors.slice(0, 5).map(err => 
+          `Row ${err.row}: ${err.error}`
+        ).join('\n');
+        
+        const errorText = `${errorCount} errors occurred during import.\n\nFirst ${Math.min(5, errors.length)} errors:\n${errorMessages}`;
+        if (insertedCount === 0) {
+          setImportError(errorText);
+        } else {
+          setImportSuccess(prev => `${prev}\n\nWarnings:\n${errorText}`);
+        }
       }
 
       // Clear file input
       const fileInput = document.getElementById('csv-file-input');
-      if (fileInput) fileInput.value = '';
+      if (fileInput) {
+        fileInput.value = '';
+      }
       setImportFile(null);
 
     } catch (error) {
       console.error('Import error:', error);
-      setImportError(error.message);
+      setImportError(`Import failed: ${error.message}`);
     } finally {
       setImportLoading(false);
     }
@@ -794,154 +766,6 @@ function AdminDashboard() {
                 <strong>Debug Info:</strong> {debugInfo}
               </div>
             )}
-
-      {/* Import Modal */}
-      {showImportModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeImportModal();
-            }
-          }}
-        >
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Import {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} from CSV</h2>
-            
-            {importError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                <p className="text-red-700 text-sm whitespace-pre-line">{importError}</p>
-              </div>
-            )}
-            
-            {importSuccess && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                <p className="text-green-700 text-sm">{importSuccess}</p>
-              </div>
-            )}
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select CSV File
-              </label>
-              <input
-                id="csv-file-input"
-                type="file"
-                accept=".csv"
-                onChange={handleFileSelect}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-              {importFile && (
-                <p className="text-sm text-green-600 mt-1">Selected: {importFile.name}</p>
-              )}
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <h4 className="font-medium text-sm text-gray-700 mb-2">CSV Format Requirements:</h4>
-              <ul className="text-xs text-gray-600 space-y-1">
-                {activeTab === 'books' && (
-                  <>
-                    <li>• Required: name, author, language</li>
-                    <li>• Optional: publisher, genre, description, image_url, audio_url, pdf_url, ratings, is_free, available, keeper_id</li>
-                  </>
-                )}
-                {activeTab === 'cafes' && (
-                  <>
-                    <li>• Required: name, location</li>
-                    <li>• Optional: area, city, image_url, audio_url, gmap_url, average_bill, discount, ratings, specials, cafe_owner_id</li>
-                  </>
-                )}
-                {activeTab === 'users' && (
-                  <>
-                    <li>• Required: name, email, phone_number</li>
-                    <li>• Optional: password (defaults to 'defaultPassword123'), subscription_type (defaults to 'basic'), role (defaults to 'user')</li>
-                  </>
-                )}
-                <li>• First row must contain column headers</li>
-                <li>• Use commas as separators</li>
-              </ul>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={closeImportModal}
-                disabled={importLoading}
-                className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  console.log('Import CSV button clicked in modal');
-                  handleImportCSV();
-                }}
-                disabled={!importFile || importLoading}
-                className="px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
-              >
-                {importLoading && (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                )}
-                <span>{importLoading ? 'Importing...' : 'Import CSV'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Export Modal */}
-      {showExportModal && (
-        <div
-          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              closeExportModal();
-            }
-          }}
-        >
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Export {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} to CSV</h2>
-            
-            <div className="mb-6">
-              <p className="text-gray-600 mb-2">
-                This will export all {activeTab} data to a CSV file that you can open in Excel or other spreadsheet applications.
-              </p>
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p className="text-sm text-blue-700">
-                  <strong>Records to export:</strong> {
-                    activeTab === 'books' ? books.length :
-                    activeTab === 'cafes' ? cafes.length :
-                    activeTab === 'users' ? users.length :
-                    transactions.length
-                  } items
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={closeExportModal}
-                className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  console.log('Export download button clicked');
-                  handleExportCSV();
-                }}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center space-x-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>Download CSV</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
             <div className="space-y-2 text-sm text-red-600">
               <p><strong>Common causes:</strong></p>
               <ul className="list-disc ml-5 space-y-1">
@@ -994,14 +818,6 @@ function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-          <button
-            className="px-4 py-2 rounded-full bg-red-600 text-white font-medium hover:bg-red-700"
-          >
-            <a href="/auth/logout">Log Out</a>
-          </button>
-        </div>
         <div className="flex items-center justify-between mb-6">
           <div className="flex space-x-4">
             {["books", "cafes", "users", "transactions"].map((tab) => (
@@ -1064,6 +880,135 @@ function AdminDashboard() {
         )}
       </div>
 
+      {/* Import Modal */}
+      {showImportModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeImportModal();
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-auto">
+            <h2 className="text-2xl font-bold mb-4">Import Books from CSV</h2>
+            
+            {importError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p className="text-red-700 text-sm whitespace-pre-line">{importError}</p>
+              </div>
+            )}
+            
+            {importSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                <p className="text-green-700 text-sm whitespace-pre-line">{importSuccess}</p>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select CSV File
+              </label>
+              <input
+                id="csv-file-input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFileSelect}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              {importFile && (
+                <p className="text-sm text-green-600 mt-1">Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</p>
+              )}
+            </div>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <h4 className="font-medium text-sm text-gray-700 mb-2">CSV Format Requirements for Books:</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• <strong>Required columns:</strong> name, author, language</li>
+                <li>• <strong>Optional columns:</strong> publisher, genre, description, image_url, audio_url, pdf_url, ratings, is_free, available, keeper_id</li>
+                <li>• First row must contain column headers</li>
+                <li>• Use commas as separators</li>
+                <li>• Boolean fields (is_free, available): use true/false, 1/0, yes/no, or y/n</li>
+                <li>• Ratings: number between 0-5</li>
+                <li>• File size limit: 5MB</li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-3 mb-4">
+              <h4 className="font-medium text-sm text-blue-700 mb-2">Example CSV format:</h4>
+              <pre className="text-xs text-blue-600 font-mono overflow-x-auto">
+{`name,author,language,publisher,genre,ratings,is_free,available
+"The Great Gatsby","F. Scott Fitzgerald","English","Scribner","Fiction",4.5,false,true
+"1984","George Orwell","English","Secker & Warburg","Dystopian",4.8,false,true`}
+              </pre>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={closeImportModal}
+                disabled={importLoading}
+                className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportCSV}
+                disabled={!importFile || importLoading}
+                className="px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
+              >
+                {importLoading && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                <span>{importLoading ? 'Importing...' : 'Import Books'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeExportModal();
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-2xl font-bold mb-4">Export {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} to CSV</h2>
+            
+            <div className="mb-6">
+              <p className="text-gray-600 mb-2">
+                CSV file has been downloaded successfully! You can now open it in Excel or other spreadsheet applications.
+              </p>
+              <div className="bg-green-50 rounded-lg p-3">
+                <p className="text-sm text-green-700">
+                  <strong>Records exported:</strong> {
+                    activeTab === 'books' ? books.length :
+                    activeTab === 'cafes' ? cafes.length :
+                    activeTab === 'users' ? users.length :
+                    transactions.length
+                  } items
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={closeExportModal}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
       {showModal && (
         <div
           className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"

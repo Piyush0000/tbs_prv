@@ -260,6 +260,7 @@ router.post('/signup', async (req, res) => {
     }
 });
 
+
 /**
  * @route   POST /api/auth/signin
  * @desc    Sign in a user
