@@ -12,22 +12,70 @@ const userSchema = new mongoose.Schema({
     phone_number: { type: String, required: false, unique: true, sparse: true },
     email: { type: String, required: true, unique: true },
     password: { type: String },
-    subscription_validity: { type: Date },
-    subscription_type: { type: String, enum: ['basic', 'standard', 'premium'], default: 'basic' },
     book_id: { type: String, default: null },
     role: { type: String, default: 'user' },
-    deposit_status: { type: String, enum: ['n/a', 'deposited', 'refunded'], default: 'n/a' },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
+    
+    // Personal Information
     gender: { type: String, enum: ['male', 'female', 'other'] },
     state: String,
     district: String,
     pincode: String,
+    
+    // Verification fields
     isVerified: { type: Boolean, default: false },
     otp: String,
     otpExpires: Date,
     resetPasswordToken: String,
     resetPasswordExpires: Date,
+    
+    // Deposit Information
+    deposit_status: {
+        type: String,
+        enum: ['not_paid', 'deposited', 'refunded'],
+        default: 'not_paid'
+    },
+    deposit_amount: {
+        type: Number,
+        default: 0
+    },
+    deposit_paid_at: {
+        type: Date,
+        default: null
+    },
+    
+    // Subscription Information
+    subscription_type: {
+        type: String,
+        enum: ['basic', 'standard', 'premium'],
+        default: 'basic'
+    },
+    subscription_validity: {
+        type: Date,
+        default: null
+    },
+    subscription_started_at: {
+        type: Date,
+        default: null
+    },
+    subscription_cancelled_at: {
+        type: Date,
+        default: null
+    },
+    
+    // Razorpay subscription ID for recurring payments
+    razorpay_subscription_id: {
+        type: String,
+        default: null
+    },
+    
+    // Used coupons tracking
+    used_coupons: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'CouponCode',
+        default: []
+    }]
 });
 
 userSchema.pre('save', async function (next) {
@@ -105,6 +153,38 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
         console.error('Password comparison error:', error);
         return false;
     }
+};
+
+// Method to check if subscription is active
+userSchema.methods.hasActiveSubscription = function() {
+    return this.subscription_type && 
+           this.subscription_type !== 'basic' &&
+           this.subscription_validity && 
+           this.subscription_validity > new Date() &&
+           this.deposit_status === 'deposited';
+};
+
+// Method to check if user can request books
+userSchema.methods.canRequestBook = function() {
+    return this.hasActiveSubscription() && 
+           (this.subscription_type !== 'basic' || !this.book_id);
+};
+
+// Method to get subscription days remaining
+userSchema.methods.getSubscriptionDaysRemaining = function() {
+    if (!this.subscription_validity) return 0;
+    
+    const now = new Date();
+    const validity = new Date(this.subscription_validity);
+    const diffTime = validity - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays);
+};
+
+// Method to check if user can use a specific coupon
+userSchema.methods.canUseCoupon = function(couponId) {
+    return !this.used_coupons || !this.used_coupons.includes(couponId);
 };
 
 module.exports = mongoose.model('User', userSchema);

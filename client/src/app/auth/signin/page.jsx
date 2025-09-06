@@ -3,9 +3,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "../../Hooks/AuthContext";
 import ThemeToggle from "../../../components/ThemeToggle";
+import { useRouter } from "next/navigation";
 
 function MainComponent() {
     const { login } = useAuth();
+    const router = useRouter();
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -39,53 +41,27 @@ function MainComponent() {
         }
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-            console.log('API URL:', apiUrl);
+            // Use the login function from AuthContext - it expects email and password
+            const result = await login(email, password);
             
-            if (!apiUrl) {
-                throw new Error('API URL not configured. Please set NEXT_PUBLIC_API_URL environment variable.');
+            if (result.success) {
+                console.log('Login successful, user data:', result.user);
+                setSuccess('Login successful! Redirecting...');
+                
+                // Add a small delay to show success message, then redirect
+                setTimeout(() => {
+                    // Redirect based on user role
+                    if (result.user.role === 'admin') {
+                        router.push('/AdminDashboard');
+                    } else if (result.user.role === 'cafe') {
+                        router.push('/CafeDashboard');
+                    } else {
+                        router.push('/'); // Home page
+                    }
+                }, 1000);
+            } else {
+                setError(result.message || 'Login failed');
             }
-
-            console.log('Sending request to:', `${apiUrl}/auth/signin`);
-            console.log('Request data:', { email: email.toLowerCase(), password: '[HIDDEN]' });
-
-            const res = await fetch(`${apiUrl}/auth/signin`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include', // Important: Include cookies
-                body: JSON.stringify({ 
-                    email: email.toLowerCase().trim(), 
-                    password: password.trim() 
-                }),
-            });
-
-            console.log('Response status:', res.status);
-            const data = await res.json();
-            console.log('Response data:', data);
-
-            if (!res.ok) {
-                throw new Error(data.message || `HTTP ${res.status}: Login failed`);
-            }
-
-            // Use the login function from AuthContext
-            login(data.token, data.user);
-            
-            console.log('Login successful, user data:', data.user);
-            setSuccess('Login successful! Redirecting...');
-            
-            // Add a small delay to show success message
-            setTimeout(() => {
-                // Redirect based on user role
-                if (data.user.role === 'admin') {
-                    window.location.href = '/AdminDashboard';
-                } else if (data.user.role === 'cafe') {
-                    window.location.href = '/CafeDashboard';
-                } else {
-                    window.location.href = '/'; // Home page
-                }
-            }, 1000);
             
         } catch (err) {
             console.error('Sign-in error:', err);

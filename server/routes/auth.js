@@ -13,24 +13,28 @@ const { sendOTPEmail, testEmailConnection } = require('../utils/mailer');
  * @desc    Get user profile from httpOnly cookie
  * @access  Private
  */
+// In your auth.js file, update the /profile route:
+
 router.get('/profile', async (req, res) => {
     try {
         console.log('Profile check - Headers:', req.headers);
         console.log('Profile check - Cookies:', req.cookies);
         
-        // Check if cookies exist
-        if (!req.cookies) {
-            console.log('No cookies object found - cookie parser might not be configured');
-            return res.status(401).json({ 
-                message: 'No cookies available',
-                isAuthenticated: false 
-            });
+        let token = null;
+        
+        // First, try to get token from cookies
+        if (req.cookies && req.cookies.token) {
+            token = req.cookies.token;
+            console.log('Token found in cookies');
+        }
+        // If not in cookies, try Authorization header
+        else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            token = req.headers.authorization.substring(7);
+            console.log('Token found in Authorization header');
         }
         
-        const token = req.cookies.token;
-        
         if (!token) {
-            console.log('No token found in cookies');
+            console.log('No token found in cookies or headers');
             return res.status(401).json({ 
                 message: 'No token provided',
                 isAuthenticated: false 

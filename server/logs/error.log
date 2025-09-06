@@ -53,3 +53,6 @@ Use mongoose.model(name, schema)
     at D:\kavya tbs\TBS-Kavya\server\node_modules\mongoose\lib\document.js:3112:17
     at D:\kavya tbs\TBS-Kavya\server\node_modules\mongoose\lib\schemaType.js:1407:9
     at process.processTicksAndRejections (node:internal/process/task_queues:77:11)
+2025-09-06 01:24:10 [ERROR]: Error creating deposit order: Transaction numbers are only allowed on a replica set member or mongos
+2025-09-06 01:26:19 [ERROR]: Error creating deposit order: Transaction numbers are only allowed on a replica set member or mongos
+2025-09-06 01:37:58 [ERROR]: Error creating deposit order: Transaction numbers are only allowed on a replica set member or mongos

@@ -25,7 +25,6 @@ function Header({ user, onSearch, onLogout }) {
     };
   }, [userMenuRef]);
 
-
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark">
       <div className="container flex h-16 items-center justify-between px-4 sm:px-6 space-x-4">
@@ -64,7 +63,6 @@ function Header({ user, onSearch, onLogout }) {
             </div>
         </div>
 
-
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6">
           <Link
@@ -86,26 +84,68 @@ function Header({ user, onSearch, onLogout }) {
             Discover
           </Link>
           
+          {/* User Authentication Section */}
           {isAuthenticated ? (
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center space-x-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-white font-medium hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
               >
+                {/* User Avatar */}
+                <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-semibold">
+                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </span>
+                </div>
                 <span>{user.name || 'User'}</span>
-                 <svg className={`h-4 w-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                <svg 
+                  className={`h-4 w-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
               </button>
               {isUserMenuOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md shadow-lg py-1">
-                  <Link href="/profile" className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700">Profile</Link>
-                  <button onClick={onLogout} className="w-full text-left block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700">Logout</button>
+                <div className="absolute right-0 mt-2 w-48 bg-background-light dark:bg-background-dark border border-border-light dark:border-border-dark rounded-md shadow-lg py-1 z-50">
+                  {/* User Info Section */}
+                  <div className="px-4 py-2 border-b border-border-light dark:border-border-dark">
+                    <p className="font-medium text-text-light dark:text-text-dark text-sm">
+                      {user.name || 'User'}
+                    </p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  </div>
+                  <Link 
+                    href="/profile" 
+                    className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  >
+                    Profile
+                  </Link>
+                  <Link 
+                    href="/my-books" 
+                    className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700"
+                    onClick={() => setIsUserMenuOpen(false)}
+                  >
+                    My Books
+                  </Link>
+                  <button 
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onLogout();
+                    }} 
+                    className="w-full text-left block px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Logout
+                  </button>
                 </div>
               )}
             </div>
           ) : (
             <Link
               href="/auth/signin"
-              className="inline-flex items-center px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
+              className="inline-flex items-center px-6 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-white font-medium hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
             >
               Log in
             </Link>
@@ -138,22 +178,72 @@ function Header({ user, onSearch, onLogout }) {
                 />
             </div>
           <nav className="flex flex-col items-center space-y-2 py-4 border-t border-border-light dark:border-border-dark">
-            <Link href="/how-it-works" className="py-2">How it works?</Link>
-            <Link href="/about" className="py-2">About</Link>
-            <Link href="/discover" className="py-2">Discover</Link>
+            <Link 
+              href="/how-it-works" 
+              className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              How it works?
+            </Link>
+            <Link 
+              href="/about" 
+              className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              About
+            </Link>
+            <Link 
+              href="/discover" 
+              className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Discover
+            </Link>
             
             <div className="w-full border-t border-border-light dark:border-border-dark my-2"></div>
 
+            {/* Mobile User Authentication Section */}
             {isAuthenticated ? (
               <>
-                <span className="font-medium">Hello, {user.name || 'User'}</span>
-                <Link href="/profile" className="py-2">Profile</Link>
-                <button onClick={onLogout} className="py-2 text-red-500">Logout</button>
+                <div className="text-center py-2 flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-primary-light dark:bg-primary-dark rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-semibold">
+                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </span>
+                  </div>
+                  <span className="font-medium text-text-light dark:text-text-dark">
+                    Hello, {user.name || 'User'}
+                  </span>
+                </div>
+                <Link 
+                  href="/profile" 
+                  className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Profile
+                </Link>
+                <Link 
+                  href="/my-books" 
+                  className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  My Books
+                </Link>
+                <button 
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onLogout();
+                  }} 
+                  className="py-2 text-red-500 hover:text-red-600"
+                >
+                  Logout
+                </button>
               </>
             ) : (
                <Link
                   href="/auth/signin"
-                  className="w-3/4 text-center mt-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button"
+                  className="w-3/4 text-center mt-2 px-4 py-2 rounded-full bg-primary-light dark:bg-primary-dark text-white font-medium hover:bg-primary-light/80 dark:hover:bg-primary-dark/80 transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
                 >
                   Log In
                 </Link>
