@@ -264,6 +264,58 @@ router.post('/signup', async (req, res) => {
     }
 });
 
+// Add this route to your users router (add it after the /profile route)
+
+// GET /:user_id: Get a specific user by user_id (for QR scanner)
+router.get('/:user_id', async (req, res) => {
+    try {
+        const { user_id } = req.params;
+        console.log('Looking for user with user_id:', user_id);
+        
+        // Find user by user_id
+        const user = await User.findOne({ user_id: user_id });
+        
+        if (!user) {
+            console.log('User not found:', user_id);
+            
+            // Debug: Show available users for troubleshooting
+            const availableUsers = await User.find({}, 'user_id name email').limit(5);
+            console.log('Available users:', availableUsers.map(u => ({ user_id: u.user_id, name: u.name })));
+            
+            return res.status(404).json({ 
+                error: 'User not found',
+                requestedId: user_id,
+                available: availableUsers.map(u => ({ user_id: u.user_id, name: u.name }))
+            });
+        }
+        
+        console.log('User found:', user.name, 'with user_id:', user.user_id);
+        
+        // Return user data (excluding sensitive information)
+        res.status(200).json({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            phone_number: user.phone_number,
+            subscription_type: user.subscription_type,
+            subscription_validity: user.subscription_validity,
+            book_id: user.book_id,
+            role: user.role,
+            deposit_status: user.deposit_status,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        });
+        
+    } catch (err) {
+        console.error('Error fetching user:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// IMPORTANT: Make sure this route is placed BEFORE the PUT /:user_id route
+// Otherwise Express will try to match PUT requests to this GET route first
+
 
 /**
  * @route   POST /api/auth/signin

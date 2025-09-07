@@ -27,6 +27,55 @@ function QRScanner({ onScanned }) {
     'http://localhost:5000/api';
   const GEMINI_API_KEY = 'AIzaSyBGGLrTRGa17t6ZSUzSF6Zn1zsXeJhH0Xk';
   
+  // Parse QR data to determine type and extract relevant information
+  const parseQRData = (qrData) => {
+    console.log(`Parsing QR data: ${qrData}`);
+    
+    // Check if it's a transaction QR (format: TXN_timestamp_hash.User_ID)
+    if (qrData.startsWith('TXN_')) {
+      const parts = qrData.split('.');
+      if (parts.length === 2 && parts[1].startsWith('User_')) {
+        const userId = parts[1]; // Extract User_038
+        const transactionId = parts[0]; // Extract TXN_1757178592907_vhxwu1
+        console.log(`Extracted User ID: ${userId}, Transaction ID: ${transactionId}`);
+        return {
+          type: 'transaction',
+          userId: userId,
+          transactionId: transactionId,
+          fullData: qrData
+        };
+      }
+    }
+    
+    // Check if it's a simple user ID (User_XXX or just the ID)
+    if (qrData.startsWith('User_') || /^[a-zA-Z0-9]+$/.test(qrData)) {
+      return {
+        type: 'user',
+        userId: qrData,
+        transactionId: null,
+        fullData: qrData
+      };
+    }
+    
+    // Check if it's a simple transaction ID format
+    if (qrData.includes('.')) {
+      const parts = qrData.split('.');
+      return {
+        type: 'mixed',
+        transactionId: parts[0],
+        userId: parts[1],
+        fullData: qrData
+      };
+    }
+    
+    return {
+      type: 'unknown',
+      userId: qrData,
+      transactionId: null,
+      fullData: qrData
+    };
+  };
+  
   // Debug logging function
   const addDebugLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -103,58 +152,43 @@ function QRScanner({ onScanned }) {
     }
   };
 
-  // Main scanning loop that runs on every frame
-  const scanFrame = useCallback(() => {
-    if (!isScanning || !videoRef.current || !canvasRef.current || !streamRef.current || !isJsqrLoaded) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-    if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) {
-      requestAnimationFrame(scanFrame);
-      return;
+  // Function to fetch user data from MongoDB with QR parsing
+  // Function to fetch user data from MongoDB with QR parsing
+const fetchUserData = async (qrData) => {
+  try {
+    console.log(`=== FETCHUSERDATA DEBUG ===`);
+    console.log(`Raw QR data: ${qrData}`);
+    
+    // Add explicit check for parseQRData function
+    if (typeof parseQRData !== 'function') {
+      console.error('parseQRData function is not available!');
+      throw new Error('parseQRData function is not defined');
     }
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Only try to decode QR codes if in a QR mode
-    if (scanMode === 'userQR' || scanMode === 'bookQR') {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // Use window.jsQR as the library is loaded globally
-        const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
-
-        if (qrCode?.data) {
-            handleQrScan(qrCode.data);
-        }
+    
+    const parsed = parseQRData(qrData);
+    console.log(`Parsed result:`, parsed);
+    
+    // Use the parsed user ID instead of raw QR data
+    const userId = parsed.userId;
+    console.log(`Using User ID: ${userId}`);
+    console.log(`Full API URL: ${API_BASE_URL}/users/${userId}`);
+    
+    addDebugLog(`Fetching user data for ID: ${userId}`);
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`);
+    
+    if (!response.ok) {
+      throw new Error(`User API call failed with status: ${response.status}`);
     }
-
-    // Continue loop if still scanning
-    if (isScanning) {
-      requestAnimationFrame(scanFrame);
-    }
-  }, [isScanning, scanMode, isJsqrLoaded]);
-
-  // Function to fetch user data from MongoDB
-  const fetchUserData = async (userId) => {
-    try {
-      addDebugLog(`Fetching user data for ID: ${userId}`);
-      const response = await fetch(`${API_BASE_URL}/users/${userId}`);
-      
-      if (!response.ok) {
-        throw new Error(`User API call failed with status: ${response.status}`);
-      }
-      
-      const userData = await response.json();
-      addDebugLog(`User found: ${userData.name || userData.username}`);
-      return userData;
-    } catch (err) {
-      addDebugLog(`User fetch error: ${err.message}`, 'error');
-      throw err;
-    }
-  };
+    
+    const userData = await response.json();
+    addDebugLog(`User found: ${userData.name || userData.username}`);
+    return userData;
+  } catch (err) {
+    console.error(`=== FETCHUSERDATA ERROR ===`, err);
+    addDebugLog(`User fetch error: ${err.message}`, 'error');
+    throw err;
+  }
+};
 
   // Function to fetch book data from MongoDB by ID
   const fetchBookData = async (bookId) => {
@@ -422,6 +456,40 @@ function QRScanner({ onScanned }) {
     setBookSuggestions([]);
     addDebugLog(`User chose to use AI-identified title: ${identifiedTitle}`);
   };
+
+  // Main scanning loop that runs on every frame
+  const scanFrame = useCallback(() => {
+    if (!isScanning || !videoRef.current || !canvasRef.current || !streamRef.current || !isJsqrLoaded) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    if (video.readyState !== video.HAVE_ENOUGH_DATA || video.videoWidth === 0) {
+      requestAnimationFrame(scanFrame);
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Only try to decode QR codes if in a QR mode
+    if (scanMode === 'userQR' || scanMode === 'bookQR') {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        // Use window.jsQR as the library is loaded globally
+        const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
+
+        if (qrCode?.data) {
+            handleQrScan(qrCode.data);
+        }
+    }
+
+    // Continue loop if still scanning
+    if (isScanning) {
+      requestAnimationFrame(scanFrame);
+    }
+  }, [isScanning, scanMode, isJsqrLoaded]);
 
   // Function to set the scanning mode and start the camera
   const startScanMode = (mode) => {

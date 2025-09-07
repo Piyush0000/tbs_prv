@@ -153,30 +153,42 @@ function QRScanner({ onScanned }) {
   };
 
   // Function to fetch user data from MongoDB with QR parsing
-  const fetchUserData = async (qrData) => {
-    try {
-      console.log(`Raw QR data: ${qrData}`);
-      const parsed = parseQRData(qrData);
-      
-      // Use the parsed user ID instead of raw QR data
-      const userId = parsed.userId;
-      console.log(`Using User ID: ${userId}`);
-      
-      addDebugLog(`Fetching user data for ID: ${userId}`);
-      const response = await fetch(`${API_BASE_URL}/users/${userId}`);
-      
-      if (!response.ok) {
-        throw new Error(`User API call failed with status: ${response.status}`);
-      }
-      
-      const userData = await response.json();
-      addDebugLog(`User found: ${userData.name || userData.username}`);
-      return userData;
-    } catch (err) {
-      addDebugLog(`User fetch error: ${err.message}`, 'error');
-      throw err;
+  // Function to fetch user data from MongoDB with QR parsing
+const fetchUserData = async (qrData) => {
+  try {
+    console.log(`=== FETCHUSERDATA DEBUG ===`);
+    console.log(`Raw QR data: ${qrData}`);
+    
+    // Add explicit check for parseQRData function
+    if (typeof parseQRData !== 'function') {
+      console.error('parseQRData function is not available!');
+      throw new Error('parseQRData function is not defined');
     }
-  };
+    
+    const parsed = parseQRData(qrData);
+    console.log(`Parsed result:`, parsed);
+    
+    // Use the parsed user ID instead of raw QR data
+    const userId = parsed.userId;
+    console.log(`Using User ID: ${userId}`);
+    console.log(`Full API URL: ${API_BASE_URL}/users/${userId}`);
+    
+    addDebugLog(`Fetching user data for ID: ${userId}`);
+    const response = await fetch(`${API_BASE_URL}/users/${userId}`);
+    
+    if (!response.ok) {
+      throw new Error(`User API call failed with status: ${response.status}`);
+    }
+    
+    const userData = await response.json();
+    addDebugLog(`User found: ${userData.name || userData.username}`);
+    return userData;
+  } catch (err) {
+    console.error(`=== FETCHUSERDATA ERROR ===`, err);
+    addDebugLog(`User fetch error: ${err.message}`, 'error');
+    throw err;
+  }
+};
 
   // Function to fetch book data from MongoDB by ID
   const fetchBookData = async (bookId) => {
