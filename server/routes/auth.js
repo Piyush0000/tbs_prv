@@ -265,6 +265,60 @@ router.post('/signup', async (req, res) => {
 });
 
 
+
+// Add this route to your users router (add it after the /profile route)
+
+// GET /:user_id: Get a specific user by user_id (for QR scanner)
+router.get('/:user_id', async (req, res) => {
+    try {
+        const { user_id } = req.params;
+        console.log('Looking for user with user_id:', user_id);
+        
+        // Find user by user_id
+        const user = await User.findOne({ user_id: user_id });
+        
+        if (!user) {
+            console.log('User not found:', user_id);
+            
+            // Debug: Show available users for troubleshooting
+            const availableUsers = await User.find({}, 'user_id name email').limit(5);
+            console.log('Available users:', availableUsers.map(u => ({ user_id: u.user_id, name: u.name })));
+            
+            return res.status(404).json({ 
+                error: 'User not found',
+                requestedId: user_id,
+                available: availableUsers.map(u => ({ user_id: u.user_id, name: u.name }))
+            });
+        }
+        
+        console.log('User found:', user.name, 'with user_id:', user.user_id);
+        
+        // Return user data (excluding sensitive information)
+        res.status(200).json({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            phone_number: user.phone_number,
+            subscription_type: user.subscription_type,
+            subscription_validity: user.subscription_validity,
+            book_id: user.book_id,
+            role: user.role,
+            deposit_status: user.deposit_status,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        });
+        
+    } catch (err) {
+        console.error('Error fetching user:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// IMPORTANT: Make sure this route is placed BEFORE the PUT /:user_id route
+// Otherwise Express will try to match PUT requests to this GET route first
+
+
 /**
  * @route   POST /api/auth/signin
  * @desc    Sign in a user
@@ -597,6 +651,7 @@ router.post('/resend-otp', async (req, res) => {
     }
 });
 
+
 /**
  * @route   POST /api/auth/forgot-password
  * @desc    Send OTP for password reset
@@ -705,14 +760,12 @@ router.post('/reset-password', async (req, res) => {
 
         console.log('OTP verified for password reset');
 
-        // Hash new password (matching your User model's salt rounds)
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-        // Update password and clear OTP
-        user.password = hashedPassword;
+        // IMPORTANT: Set the plain password - let the pre-save hook handle hashing
+        // Do NOT hash it manually here to avoid double-hashing
+        user.password = newPassword;
         user.otp = undefined;
         user.otpExpires = undefined;
+        
         await user.save();
 
         console.log('Password reset successfully');
@@ -726,6 +779,120 @@ router.post('/reset-password', async (req, res) => {
         console.error("Reset Password Error:", error);
         console.log('=== RESET PASSWORD END (ERROR) ===\n');
         res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+});
+
+/**
+ * @route   GET /api/transactions/:transaction_id
+ * @desc    Get transaction details by transaction_id (for QR scanner)
+ * @access  Public (or add auth middleware if needed)
+ */
+router.get('/:transaction_id', async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        console.log('Looking for transaction with transaction_id:', transaction_id);
+        
+        // Find transaction by transaction_id and populate related data
+        const transaction = await Transaction.findOne({ 
+            transaction_id: transaction_id 
+        }).populate('book_id user_id cafe_id');
+        
+        if (!transaction) {
+            console.log('Transaction not found:', transaction_id);
+            
+            // Debug: Show recent transactions for troubleshooting
+            const recentTransactions = await Transaction.find({})
+                .sort({ created_at: -1 })
+                .limit(5)
+                .select('transaction_id status created_at');
+            
+            console.log('Recent transactions:', recentTransactions.map(t => ({ 
+                transaction_id: t.transaction_id, 
+                status: t.status 
+            })));
+            
+            return res.status(404).json({ 
+                error: 'Transaction not found',
+                requestedId: transaction_id,
+                recentTransactions: recentTransactions.map(t => ({ 
+                    transaction_id: t.transaction_id, 
+                    status: t.status 
+                }))
+            });
+        }
+        
+        console.log('Transaction found:', {
+            id: transaction.transaction_id,
+            book_id: transaction.book_id,
+            user_id: transaction.user_id,
+            status: transaction.status
+        });
+        
+        // Return transaction data
+        res.status(200).json({
+            transaction_id: transaction.transaction_id,
+            book_id: transaction.book_id,
+            user_id: transaction.user_id,
+            cafe_id: transaction.cafe_id,
+            status: transaction.status,
+            created_at: transaction.created_at,
+            processed_at: transaction.processed_at
+        });
+        
+    } catch (err) {
+        console.error('Error fetching transaction:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * @route   PUT /api/transactions/approve/:transaction_id
+ * @desc    Approve a transaction (update status to picked_up)
+ * @access  Private (admin only)
+ */
+router.put('/approve/:transaction_id', async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        const { book_id } = req.body;
+        
+        console.log('Approving transaction:', transaction_id, 'with book_id:', book_id);
+        
+        // Find and update transaction
+        const transaction = await Transaction.findOneAndUpdate(
+            { 
+                transaction_id: transaction_id,
+                status: 'pickup_pending'
+            },
+            { 
+                status: 'picked_up',
+                processed_at: new Date()
+            },
+            { new: true }
+        );
+        
+        if (!transaction) {
+            return res.status(404).json({ 
+                error: 'Transaction not found or not in pickup_pending status' 
+            });
+        }
+        
+        console.log('Transaction approved successfully:', transaction.transaction_id);
+        
+        res.status(200).json({
+            message: 'Transaction approved successfully',
+            transaction: {
+                transaction_id: transaction.transaction_id,
+                book_id: transaction.book_id,
+                user_id: transaction.user_id,
+                cafe_id: transaction.cafe_id,
+                status: transaction.status,
+                processed_at: transaction.processed_at
+            }
+        });
+        
+    } catch (err) {
+        console.error('Error approving transaction:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
