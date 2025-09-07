@@ -264,6 +264,8 @@ router.post('/signup', async (req, res) => {
     }
 });
 
+
+
 // Add this route to your users router (add it after the /profile route)
 
 // GET /:user_id: Get a specific user by user_id (for QR scanner)
@@ -649,6 +651,7 @@ router.post('/resend-otp', async (req, res) => {
     }
 });
 
+
 /**
  * @route   POST /api/auth/forgot-password
  * @desc    Send OTP for password reset
@@ -776,6 +779,120 @@ router.post('/reset-password', async (req, res) => {
         console.error("Reset Password Error:", error);
         console.log('=== RESET PASSWORD END (ERROR) ===\n');
         res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+});
+
+/**
+ * @route   GET /api/transactions/:transaction_id
+ * @desc    Get transaction details by transaction_id (for QR scanner)
+ * @access  Public (or add auth middleware if needed)
+ */
+router.get('/:transaction_id', async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        console.log('Looking for transaction with transaction_id:', transaction_id);
+        
+        // Find transaction by transaction_id and populate related data
+        const transaction = await Transaction.findOne({ 
+            transaction_id: transaction_id 
+        }).populate('book_id user_id cafe_id');
+        
+        if (!transaction) {
+            console.log('Transaction not found:', transaction_id);
+            
+            // Debug: Show recent transactions for troubleshooting
+            const recentTransactions = await Transaction.find({})
+                .sort({ created_at: -1 })
+                .limit(5)
+                .select('transaction_id status created_at');
+            
+            console.log('Recent transactions:', recentTransactions.map(t => ({ 
+                transaction_id: t.transaction_id, 
+                status: t.status 
+            })));
+            
+            return res.status(404).json({ 
+                error: 'Transaction not found',
+                requestedId: transaction_id,
+                recentTransactions: recentTransactions.map(t => ({ 
+                    transaction_id: t.transaction_id, 
+                    status: t.status 
+                }))
+            });
+        }
+        
+        console.log('Transaction found:', {
+            id: transaction.transaction_id,
+            book_id: transaction.book_id,
+            user_id: transaction.user_id,
+            status: transaction.status
+        });
+        
+        // Return transaction data
+        res.status(200).json({
+            transaction_id: transaction.transaction_id,
+            book_id: transaction.book_id,
+            user_id: transaction.user_id,
+            cafe_id: transaction.cafe_id,
+            status: transaction.status,
+            created_at: transaction.created_at,
+            processed_at: transaction.processed_at
+        });
+        
+    } catch (err) {
+        console.error('Error fetching transaction:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * @route   PUT /api/transactions/approve/:transaction_id
+ * @desc    Approve a transaction (update status to picked_up)
+ * @access  Private (admin only)
+ */
+router.put('/approve/:transaction_id', async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        const { book_id } = req.body;
+        
+        console.log('Approving transaction:', transaction_id, 'with book_id:', book_id);
+        
+        // Find and update transaction
+        const transaction = await Transaction.findOneAndUpdate(
+            { 
+                transaction_id: transaction_id,
+                status: 'pickup_pending'
+            },
+            { 
+                status: 'picked_up',
+                processed_at: new Date()
+            },
+            { new: true }
+        );
+        
+        if (!transaction) {
+            return res.status(404).json({ 
+                error: 'Transaction not found or not in pickup_pending status' 
+            });
+        }
+        
+        console.log('Transaction approved successfully:', transaction.transaction_id);
+        
+        res.status(200).json({
+            message: 'Transaction approved successfully',
+            transaction: {
+                transaction_id: transaction.transaction_id,
+                book_id: transaction.book_id,
+                user_id: transaction.user_id,
+                cafe_id: transaction.cafe_id,
+                status: transaction.status,
+                processed_at: transaction.processed_at
+            }
+        });
+        
+    } catch (err) {
+        console.error('Error approving transaction:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

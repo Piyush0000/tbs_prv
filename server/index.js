@@ -90,6 +90,7 @@ const authLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 
+
 // Database connection middleware
 const checkDatabaseConnection = (req, res, next) => {
     if (mongoose.connection.readyState !== 1) {

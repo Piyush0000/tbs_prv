@@ -17,6 +17,9 @@ const transactionSchema = new mongoose.Schema({
   processed_at: { type: Date },
 });
 
+
+
+
 // Pre-save hook to auto-generate transaction_id using timestamp and random string
 transactionSchema.pre('save', async function (next) {
   console.log('pre-save hook triggered for Transaction, isNew:', this.isNew);

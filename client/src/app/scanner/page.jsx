@@ -2,8 +2,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 function QRScanner({ onScanned }) {
-  const [scannedData, setScannedData] = useState({ user: null, book: null, expectedBook: null });
-  const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookCover'
+  const [scannedData, setScannedData] = useState({ 
+    transactionId: null, 
+    expectedBookId: null, 
+    detectedBookName: null,
+    normalizedBookName: null
+  });
+  const [scanMode, setScanMode] = useState(null); // 'transactionQR', 'bookCover'
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -11,77 +16,32 @@ function QRScanner({ onScanned }) {
   const [hasPermission, setHasPermission] = useState(null);
   const [isJsqrLoaded, setIsJsqrLoaded] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
-  
-  // States for book suggestions and verification
-  const [bookSuggestions, setBookSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [identifiedTitle, setIdentifiedTitle] = useState("");
-  const [bookVerificationResult, setBookVerificationResult] = useState(null);
+  const [verificationResult, setVerificationResult] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   
-  // Configuration - Update these with your actual values
-  const API_BASE_URL = typeof window !== 'undefined' && window.location ? 
-    `${window.location.protocol}//${window.location.hostname}:5000/api` : 
-    'http://localhost:5000/api';
+  // Configuration
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+    (typeof window !== 'undefined' && window.location ? 
+      `${window.location.protocol}//${window.location.hostname}:5000/api` : 
+      'http://localhost:5000/api');
   const GEMINI_API_KEY = 'AIzaSyBGGLrTRGa17t6ZSUzSF6Zn1zsXeJhH0Xk';
   
-  // Parse QR data to determine type and extract relevant information
-  const parseQRData = (qrData) => {
-    console.log(`Parsing QR data: ${qrData}`);
-    
-    // Check if it's a transaction QR (format: TXN_timestamp_hash.User_ID.Book_ID)
-    if (qrData.startsWith('TXN_')) {
-      const parts = qrData.split('.');
-      if (parts.length >= 2) {
-        const userId = parts[1]; // Extract User_038
-        const bookId = parts.length > 2 ? parts[2] : null; // Extract Book_ID if present
-        const transactionId = parts[0]; // Extract TXN_1757178592907_vhxwu1
-        console.log(`Extracted User ID: ${userId}, Book ID: ${bookId}, Transaction ID: ${transactionId}`);
-        return {
-          type: 'transaction',
-          userId: userId,
-          bookId: bookId,
-          transactionId: transactionId,
-          fullData: qrData
-        };
-      }
-    }
-    
-    // Check if it's a compound QR (User_ID.Book_ID)
-    if (qrData.includes('.')) {
-      const parts = qrData.split('.');
-      if (parts.length === 2) {
-        return {
-          type: 'compound',
-          userId: parts[0],
-          bookId: parts[1],
-          transactionId: null,
-          fullData: qrData
-        };
-      }
-    }
-    
-    // Check if it's a simple user ID (User_XXX or just the ID)
-    if (qrData.startsWith('User_') || /^[a-zA-Z0-9]+$/.test(qrData)) {
-      return {
-        type: 'user',
-        userId: qrData,
-        bookId: null,
-        transactionId: null,
-        fullData: qrData
-      };
-    }
-    
-    return {
-      type: 'unknown',
-      userId: qrData,
-      bookId: null,
-      transactionId: null,
-      fullData: qrData
-    };
+  // Function to normalize book name (remove spaces, convert to lowercase)
+  const normalizeBookName = (bookName) => {
+    return bookName
+      .toLowerCase()
+      .replace(/[^a-zA-Z0-9]/g, '') // Remove all non-alphanumeric characters including spaces
+      .trim();
+  };
+
+  // Function to extract book base name from book_id (remove underscore and numbers)
+  const extractBookBaseName = (bookId) => {
+    return bookId
+      .replace(/_\d+$/, '') // Remove underscore followed by numbers at the end
+      .toLowerCase(); // Convert to lowercase for comparison
   };
   
   // Debug logging function
@@ -160,233 +120,128 @@ function QRScanner({ onScanned }) {
     }
   };
 
-  // Function to fetch book data from the API
-  const fetchBookData = async (bookId) => {
+  // Function to fetch transaction data and extract book_id
+  const fetchTransactionData = async (transactionId) => {
     try {
-      addDebugLog(`Fetching book data for ID: ${bookId}`);
-      const response = await fetch(`${API_BASE_URL}/books/${bookId}`);
+      addDebugLog(`Fetching transaction data for ID: ${transactionId}`);
+      const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}`);
       
       if (!response.ok) {
-        throw new Error(`Book API call failed with status: ${response.status}`);
+        throw new Error(`Transaction API call failed with status: ${response.status}`);
       }
       
-      const bookData = await response.json();
-      addDebugLog(`Book found: ${bookData.name || bookData.title}`);
-      return bookData;
+      const transactionData = await response.json();
+      addDebugLog(`Transaction found: ${JSON.stringify(transactionData)}`);
+      
+      // The transaction contains ObjectId references, we need to get the actual book_id string
+      // First try to get it directly if it's populated, otherwise fetch the book separately
+      let bookId = transactionData.book_id;
+      
+      if (typeof bookId === 'object' && bookId.book_id) {
+        // If populated, use the book_id from the populated object
+        bookId = bookId.book_id;
+      } else if (typeof bookId === 'string' && bookId.match(/^[0-9a-fA-F]{24}$/)) {
+        // If it's an ObjectId string, we need to fetch the book separately
+        addDebugLog(`Book ID is ObjectId, fetching book details: ${bookId}`);
+        const bookResponse = await fetch(`${API_BASE_URL}/books/${bookId}`);
+        if (bookResponse.ok) {
+          const bookData = await bookResponse.json();
+          bookId = bookData.book_id;
+          addDebugLog(`Fetched book_id from book data: ${bookId}`);
+        } else {
+          throw new Error('Failed to fetch book details');
+        }
+      }
+      
+      if (!bookId) {
+        throw new Error('No book_id found in transaction');
+      }
+      
+      addDebugLog(`Final book ID extracted: ${bookId}`);
+      return { transaction: transactionData, bookId };
     } catch (err) {
-      addDebugLog(`Book fetch error: ${err.message}`, 'error');
+      addDebugLog(`Transaction fetch error: ${err.message}`, 'error');
       throw err;
     }
   };
 
-  // Function to fetch user data from MongoDB with QR parsing and book details
-  const fetchUserData = async (qrData) => {
-    try {
-      console.log(`=== FETCHUSERDATA DEBUG ===`);
-      console.log(`Raw QR data: ${qrData}`);
-      
-      if (typeof parseQRData !== 'function') {
-        console.error('parseQRData function is not available!');
-        throw new Error('parseQRData function is not defined');
-      }
-      
-      const parsed = parseQRData(qrData);
-      console.log(`Parsed result:`, parsed);
-      
-      const userId = parsed.userId;
-      const bookId = parsed.bookId;
-      console.log(`Using User ID: ${userId}, Book ID: ${bookId}`);
-      
-      // Fetch user data
-      addDebugLog(`Fetching user data for ID: ${userId}`);
-      const userResponse = await fetch(`${API_BASE_URL}/users/${userId}`);
-      
-      if (!userResponse.ok) {
-        throw new Error(`User API call failed with status: ${userResponse.status}`);
-      }
-      
-      const userData = await userResponse.json();
-      addDebugLog(`User found: ${userData.name || userData.username}`);
-      
-      // If bookId is present, fetch book data as well
-      let expectedBookData = null;
-      if (bookId) {
-        try {
-          expectedBookData = await fetchBookData(bookId);
-          addDebugLog(`Expected book: ${expectedBookData.name || expectedBookData.title}`);
-        } catch (bookErr) {
-          addDebugLog(`Failed to fetch expected book: ${bookErr.message}`, 'error');
-          // Continue without book data - user scan still successful
-        }
-      }
-      
-      return {
-        user: userData,
-        expectedBook: expectedBookData,
-        qrInfo: parsed
-      };
-    } catch (err) {
-      console.log(`=== FETCHUSERDATA ERROR ===`, err);
-      addDebugLog(`User fetch error: ${err.message}`, 'error');
-      throw err;
-    }
-  };
-
-  // Enhanced function to search book in database with suggestions
-  const searchBookWithSuggestions = async (bookTitle) => {
-    try {
-      addDebugLog(`Searching for book with title: "${bookTitle}"`);
-      
-      // Get all books from database
-      const response = await fetch(`${API_BASE_URL}/books`);
-      
-      if (!response.ok) {
-        throw new Error(`Books API call failed with status: ${response.status}`);
-      }
-      
-      const allBooks = await response.json();
-      
-      if (!allBooks || allBooks.length === 0) {
-        throw new Error('No books found in database');
-      }
-
-      const searchTerm = bookTitle.toLowerCase().trim();
-      const searchWords = searchTerm.split(' ').filter(word => word.length > 2);
-      
-      // Calculate similarity scores for all books
-      const scoredBooks = allBooks.map(book => {
-        const bookName = (book.name || book.title || '').toLowerCase();
-        const bookAuthor = (book.author || '').toLowerCase();
-        const bookWords = bookName.split(' ').concat(bookAuthor.split(' '));
-        
-        let score = 0;
-        
-        // Exact match bonus
-        if (bookName === searchTerm) {
-          score += 100;
-        }
-        
-        // Partial match scoring
-        searchWords.forEach(searchWord => {
-          if (bookName.includes(searchWord)) {
-            score += searchWord.length * 2; // Longer words get more weight
-          }
-          if (bookAuthor.includes(searchWord)) {
-            score += searchWord.length; // Author match gets some weight
-          }
-          // Word boundary matches
-          bookWords.forEach(bookWord => {
-            if (bookWord.includes(searchWord)) {
-              score += 1;
-            }
-          });
-        });
-        
-        // Length similarity bonus (books with similar title length might be more relevant)
-        const lengthDiff = Math.abs(bookName.length - searchTerm.length);
-        if (lengthDiff < 5) {
-          score += 5;
-        }
-        
-        return { ...book, score };
-      });
-      
-      // Sort by score and filter out very low scores
-      const suggestions = scoredBooks
-        .filter(book => book.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 5); // Top 5 suggestions
-      
-      addDebugLog(`Found ${suggestions.length} potential matches`);
-      
-      return {
-        exactMatch: suggestions.length > 0 && suggestions[0].score >= 100 ? suggestions[0] : null,
-        suggestions: suggestions
-      };
-      
-    } catch (err) {
-      addDebugLog(`Book search error: ${err.message}`, 'error');
-      throw err;
-    }
-  };
-
-  // Function to verify if scanned book matches expected book
-  const verifyBookMatch = (scannedBookTitle, expectedBook) => {
-    if (!expectedBook) {
-      return { isMatch: false, reason: "No expected book to compare with" };
-    }
+  // Function to update transaction status to approved
+  // Function to update transaction status to approved
+const updateTransactionStatus = async (transactionId, bookId) => {
+  try {
+    addDebugLog(`Updating transaction status for ID: ${transactionId}`);
+    const token = localStorage.getItem('token');
     
-    const expectedTitle = (expectedBook.name || expectedBook.title || '').toLowerCase().trim();
-    const scannedTitle = scannedBookTitle.toLowerCase().trim();
-    
-    // Exact match
-    if (expectedTitle === scannedTitle) {
-      return { isMatch: true, confidence: 100 };
-    }
-    
-    // Word-based matching
-    const expectedWords = expectedTitle.split(' ').filter(word => word.length > 2);
-    const scannedWords = scannedTitle.split(' ').filter(word => word.length > 2);
-    
-    let matchingWords = 0;
-    let totalWords = Math.max(expectedWords.length, scannedWords.length);
-    
-    expectedWords.forEach(expectedWord => {
-      if (scannedWords.some(scannedWord => 
-          scannedWord.includes(expectedWord) || expectedWord.includes(scannedWord)
-      )) {
-        matchingWords++;
-      }
+    // Use the correct endpoint that exists in your backend
+    const response = await fetch(`${API_BASE_URL}/transactions/approve/${transactionId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ book_id: bookId }),
     });
-    
-    const confidence = totalWords > 0 ? (matchingWords / totalWords) * 100 : 0;
-    
-    return {
-      isMatch: confidence >= 60, // Consider it a match if 60% of words match
-      confidence: Math.round(confidence),
-      reason: confidence >= 60 ? 
-        `Strong match with ${confidence}% word similarity` : 
-        `Weak match with only ${confidence}% word similarity`
-    };
-  };
 
-  // Handles the result of a successful QR code scan
-  const handleQrScan = async (data) => {
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Failed to approve transaction: ${errorData.error || response.statusText}`);
+    }
+
+    const updatedTransaction = await response.json();
+    addDebugLog(`Transaction approved successfully: ${JSON.stringify(updatedTransaction)}`);
+    return updatedTransaction;
+  } catch (err) {
+    addDebugLog(`Transaction update error: ${err.message}`, 'error');
+    throw err;
+  }
+};
+
+  // Handles the result of a successful transaction QR code scan
+  const handleTransactionQrScan = async (data) => {
     if (!data) return;
-    setIsScanning(false); // Stop scanning after a successful read
+    setIsScanning(false);
     setIsLoading(true);
-    setInfo(`Processing user and book information...`);
-    addDebugLog(`QR code scanned: ${data}`);
+    setInfo(`Processing transaction QR code...`);
+    addDebugLog(`Transaction QR code scanned: ${data}`);
 
     try {
-      const { user, expectedBook, qrInfo } = await fetchUserData(data);
-      const userName = user.name || user.username || 'Unknown User';
+      // Extract transaction ID from QR data
+      // QR format is TXN_timestamp_hash.User_ID - we only need the transaction part
+      let transactionId = data;
       
-      // Update scanned data with user and expected book information
+      if (data.includes('.')) {
+        // Split by dot and take the first part (transaction ID)
+        transactionId = data.split('.')[0];
+        addDebugLog(`Extracted transaction ID from compound QR: ${transactionId}`);
+      }
+      
+      // Ensure it starts with TXN_
+      if (!transactionId.startsWith('TXN_')) {
+        throw new Error('Invalid transaction QR format. Expected format: TXN_timestamp_hash');
+      }
+      
+      // Fetch transaction data to get book_id
+      const { transaction, bookId } = await fetchTransactionData(transactionId);
+      
+      // Update scanned data with transaction and expected book ID
       setScannedData(prev => ({ 
         ...prev, 
-        user: userName,
-        expectedBook: expectedBook
+        transactionId: transactionId,
+        expectedBookId: bookId
       }));
       
-      if (expectedBook) {
-        const expectedBookTitle = expectedBook.name || expectedBook.title || 'Unknown Book';
-        setInfo(`User '${userName}' scanned successfully. Expected book: '${expectedBookTitle}'. Now scan the book cover to verify.`);
-        addDebugLog(`Expected book set: ${expectedBookTitle}`);
-      } else {
-        setInfo(`User '${userName}' scanned successfully. Now scan any book cover.`);
-        addDebugLog("No expected book found in QR code");
-      }
+      setInfo(`Transaction scanned successfully. Expected book ID: '${bookId}'. Now scan the book cover to verify.`);
+      addDebugLog(`Expected book ID set: ${bookId}`);
     } catch (err) {
-      addDebugLog(`Scan processing error: ${err.message}`, 'error');
-      setError(err.message || `Failed to process user`);
+      addDebugLog(`Transaction scan processing error: ${err.message}`, 'error');
+      setError(err.message || `Failed to process transaction`);
     } finally {
       setIsLoading(false);
-      setScanMode(null); // Reset mode after scan
+      setScanMode(null);
     }
   };
 
-  // Enhanced book cover scan with verification
+  // Enhanced book cover scan with verification against transaction book_id
   const handleBookCoverScan = async () => {
     if (!isScanning || !videoRef.current || !canvasRef.current) {
       setError("Scanner not ready. Please start the scanner first.");
@@ -395,7 +250,7 @@ function QRScanner({ onScanned }) {
     
     setIsLoading(true);
     setInfo("Analyzing book cover...");
-    setIsScanning(false); // Pause scanning during analysis
+    setIsScanning(false);
     addDebugLog("Starting book cover analysis");
 
     const video = videoRef.current;
@@ -430,7 +285,7 @@ function QRScanner({ onScanned }) {
 
     try {
       if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
-        throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
+        throw new Error("Gemini API key is not configured.");
       }
 
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
@@ -450,72 +305,60 @@ function QRScanner({ onScanned }) {
       if (!response.ok) {
         const errorText = await response.text();
         addDebugLog(`Gemini API error response: ${errorText}`, 'error');
-        throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
+        throw new Error(`Gemini API call failed with status: ${response.status}`);
       }
 
       const result = await response.json();
       addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
       
-      const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const detectedBookName = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
-      if (text) {
-        const bookTitle = text.trim();
-        setIdentifiedTitle(bookTitle);
-        addDebugLog(`Book title identified by AI: ${bookTitle}`);
+      if (detectedBookName) {
+        addDebugLog(`Book name detected by AI: ${detectedBookName}`);
         
-        // Check if we have an expected book to verify against
-        if (scannedData.expectedBook) {
-          const verification = verifyBookMatch(bookTitle, scannedData.expectedBook);
-          setBookVerificationResult(verification);
-          
-          if (verification.isMatch) {
-            const expectedBookTitle = scannedData.expectedBook.name || scannedData.expectedBook.title;
-            setScannedData(prev => ({ ...prev, book: expectedBookTitle }));
-            setInfo(`✅ Book verified! Scanned book matches expected book '${expectedBookTitle}' (${verification.confidence}% confidence).`);
-            addDebugLog(`Book verification successful: ${verification.confidence}% confidence`);
-          } else {
-            setInfo(`❌ Book mismatch! Scanned '${bookTitle}' but expected '${scannedData.expectedBook.name || scannedData.expectedBook.title}'. ${verification.reason}`);
-            addDebugLog(`Book verification failed: ${verification.reason}`);
-            // Still show suggestions for the scanned book
-            try {
-              const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
-              if (suggestions.length > 0) {
-                setBookSuggestions(suggestions);
-                setShowSuggestions(true);
-              }
-            } catch (searchErr) {
-              addDebugLog(`Database search error: ${searchErr.message}`, 'error');
-            }
+        // Normalize the detected book name
+        const normalizedDetectedName = normalizeBookName(detectedBookName);
+        addDebugLog(`Normalized detected name: ${normalizedDetectedName}`);
+        
+        // Extract base name from expected book_id
+        const expectedBookBaseName = extractBookBaseName(scannedData.expectedBookId);
+        addDebugLog(`Expected book base name: ${expectedBookBaseName}`);
+        
+        // Update scanned data
+        setScannedData(prev => ({
+          ...prev,
+          detectedBookName: detectedBookName,
+          normalizedBookName: normalizedDetectedName
+        }));
+        
+        // Compare normalized names
+        const isMatch = normalizedDetectedName === expectedBookBaseName;
+        
+        if (isMatch) {
+          // Books match - approve the transaction
+          try {
+            await updateTransactionStatus(scannedData.transactionId, scannedData.expectedBookId);
+            
+            setVerificationResult({
+              isMatch: true,
+              confidence: 100,
+              message: "✅ Book verification successful! Transaction approved."
+            });
+            setInfo(`✅ Book verified and transaction approved! Detected: '${detectedBookName}' matches expected book ID: '${scannedData.expectedBookId}'`);
+            addDebugLog(`Book verification successful - transaction approved`);
+          } catch (updateErr) {
+            setError(`Book verified but failed to update transaction: ${updateErr.message}`);
+            addDebugLog(`Failed to update transaction status: ${updateErr.message}`, 'error');
           }
         } else {
-          // No expected book - proceed with normal book identification
-          try {
-            const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
-            
-            if (exactMatch) {
-              // Exact match found
-              const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
-              setScannedData(prev => ({ ...prev, book: finalBookTitle }));
-              setInfo(`Book '${finalBookTitle}' found in database!`);
-              addDebugLog(`Exact match found: ${finalBookTitle}`);
-              setShowSuggestions(false);
-            } else if (suggestions.length > 0) {
-              // Show suggestions
-              setBookSuggestions(suggestions);
-              setShowSuggestions(true);
-              setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
-              addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
-            } else {
-              // No matches found
-              setInfo(`Book '${bookTitle}' identified but not found in library database.`);
-              setShowSuggestions(false);
-              addDebugLog("No matches found in database");
-            }
-          } catch (searchErr) {
-            addDebugLog(`Database search error: ${searchErr.message}`, 'error');
-            setInfo(`Book '${bookTitle}' identified (database search failed)`);
-            setShowSuggestions(false);
-          }
+          // Books don't match
+          setVerificationResult({
+            isMatch: false,
+            confidence: 0,
+            message: "❌ Book verification failed! Scanned book doesn't match expected book."
+          });
+          setInfo(`❌ Book mismatch! Detected '${detectedBookName}' (normalized: '${normalizedDetectedName}') doesn't match expected '${expectedBookBaseName}'`);
+          addDebugLog(`Book verification failed - names don't match`);
         }
       } else {
         throw new Error("Could not identify the book title from the image.");
@@ -528,37 +371,6 @@ function QRScanner({ onScanned }) {
       setScanMode(null);
       stopCamera();
     }
-  };
-
-  // Handle selecting a book from suggestions
-  const handleSelectSuggestion = (book) => {
-    const bookTitle = book.name || book.title || 'Unknown Book';
-    setScannedData(prev => ({ ...prev, book: bookTitle }));
-    setInfo(`Selected '${bookTitle}' from suggestions.`);
-    setShowSuggestions(false);
-    setBookSuggestions([]);
-    addDebugLog(`User selected suggestion: ${bookTitle}`);
-  };
-
-  // Handle using the AI-identified title even if not in database
-  const handleUseIdentifiedTitle = () => {
-    setScannedData(prev => ({ ...prev, book: identifiedTitle }));
-    setInfo(`Using identified title '${identifiedTitle}' (not in database).`);
-    setShowSuggestions(false);
-    setBookSuggestions([]);
-    addDebugLog(`User chose to use AI-identified title: ${identifiedTitle}`);
-  };
-
-  // Handle manual verification override
-  const handleManualVerification = (accept) => {
-    if (accept) {
-      setScannedData(prev => ({ ...prev, book: identifiedTitle }));
-      setInfo(`✅ Manual verification: Using '${identifiedTitle}' as the correct book.`);
-    } else {
-      setInfo(`❌ Manual verification: Book mismatch confirmed. Please scan the correct book.`);
-    }
-    setBookVerificationResult(null);
-    addDebugLog(`Manual verification: ${accept ? 'accepted' : 'rejected'}`);
   };
 
   // Main scanning loop that runs on every frame
@@ -578,14 +390,13 @@ function QRScanner({ onScanned }) {
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Only try to decode QR codes if in userQR mode
-    if (scanMode === 'userQR') {
+    // Only try to decode QR codes if in transactionQR mode
+    if (scanMode === 'transactionQR') {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      // Use window.jsQR as the library is loaded globally
       const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
 
       if (qrCode?.data) {
-        handleQrScan(qrCode.data);
+        handleTransactionQrScan(qrCode.data);
       }
     }
 
@@ -598,9 +409,7 @@ function QRScanner({ onScanned }) {
   // Function to set the scanning mode and start the camera
   const startScanMode = (mode) => {
     setError(null);
-    setShowSuggestions(false);
-    setBookSuggestions([]);
-    setBookVerificationResult(null);
+    setVerificationResult(null);
     setScanMode(mode);
     setIsScanning(true);
     addDebugLog(`Starting scan mode: ${mode}`);
@@ -608,46 +417,48 @@ function QRScanner({ onScanned }) {
     if (mode === 'bookCover') {
       setInfo("Point the camera at the book cover and press 'Scan Cover'");
     } else {
-      setInfo(`Scanning for a QR code (User or Book)...`);
+      setInfo(`Scanning for transaction QR code...`);
     }
   };
 
   // Reset the entire scanner state
   const resetScanner = () => {
-    setScannedData({ user: null, book: null, expectedBook: null });
+    setScannedData({ 
+      transactionId: null, 
+      expectedBookId: null, 
+      detectedBookName: null,
+      normalizedBookName: null
+    });
     setScanMode(null);
     setIsScanning(false);
     setIsLoading(false);
     setError(null);
     setInfo("Select a scan mode to begin.");
     setDebugLog([]);
-    setShowSuggestions(false);
-    setBookSuggestions([]);
-    setIdentifiedTitle("");
-    setBookVerificationResult(null);
+    setVerificationResult(null);
     addDebugLog("Scanner reset");
     stopCamera();
   };
   
-  // Effect to call the parent component's callback when both items are scanned
+  // Effect to call the parent component's callback when verification is complete
   useEffect(() => {
-    if (scannedData.user && scannedData.book && typeof onScanned === 'function') {
+    if (verificationResult && typeof onScanned === 'function') {
       const resultData = {
-        user: scannedData.user,
-        book: scannedData.book,
-        expectedBook: scannedData.expectedBook,
-        verification: bookVerificationResult
+        transactionId: scannedData.transactionId,
+        expectedBookId: scannedData.expectedBookId,
+        detectedBookName: scannedData.detectedBookName,
+        normalizedBookName: scannedData.normalizedBookName,
+        verification: verificationResult
       };
       onScanned(resultData);
-      setInfo("User and Book successfully scanned! Ready to reset.");
-      addDebugLog("Both user and book scanned successfully");
+      addDebugLog("Verification completed, calling parent callback");
     }
-  }, [scannedData, onScanned, bookVerificationResult]);
+  }, [verificationResult, onScanned, scannedData]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
       <div className="w-full max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-6 md:p-8 space-y-6">
-        <h1 className="text-3xl font-bold text-center text-gray-800">Library Scanner</h1>
+        <h1 className="text-3xl font-bold text-center text-gray-800">Transaction Book Verifier</h1>
 
         <div className="relative aspect-video w-full bg-gray-900 rounded-lg overflow-hidden shadow-inner">
           <video
@@ -659,7 +470,7 @@ function QRScanner({ onScanned }) {
           />
           {!isScanning && hasPermission !== false && (
              <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
-                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-50 mb-4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-50 mb-4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>
                 <p className="text-center text-gray-300">Camera is off. Select a scan mode.</p>
              </div>
           )}
@@ -674,13 +485,13 @@ function QRScanner({ onScanned }) {
               </button>
             </div>
           )}
-           {isScanning && scanMode === 'userQR' && (
+           {isScanning && scanMode === 'transactionQR' && (
                 <div className="absolute inset-0 border-8 border-white/20 rounded-lg animate-pulse"></div>
             )}
         </div>
         <canvas ref={canvasRef} className="hidden"></canvas>
 
-        {/* --- Status Display --- */}
+        {/* Status Display */}
         <div className="text-center p-4 bg-gray-100 rounded-lg">
             {isLoading ? (
                 <div className="flex items-center justify-center space-x-2 text-gray-600">
@@ -694,84 +505,45 @@ function QRScanner({ onScanned }) {
             )}
         </div>
 
-        {/* --- Expected Book Display --- */}
-        {scannedData.expectedBook && (
+        {/* Expected Book ID Display */}
+        {scannedData.expectedBookId && (
           <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-            <h3 className="font-semibold text-blue-900 mb-2">Expected Book from QR:</h3>
+            <h3 className="font-semibold text-blue-900 mb-2">Expected Book from Transaction:</h3>
             <div className="bg-white rounded-lg p-3 border border-blue-200">
-              <div className="font-medium text-gray-900">{scannedData.expectedBook.name || scannedData.expectedBook.title}</div>
-              {scannedData.expectedBook.author && (
-                <div className="text-sm text-gray-600">by {scannedData.expectedBook.author}</div>
-              )}
-              {scannedData.expectedBook.genre && (
-                <div className="text-xs text-gray-500">{scannedData.expectedBook.genre}</div>
-              )}
+              <div className="font-medium text-gray-900">Book ID: {scannedData.expectedBookId}</div>
+              <div className="text-sm text-gray-600">Base Name: {extractBookBaseName(scannedData.expectedBookId)}</div>
             </div>
           </div>
         )}
 
-        {/* --- Book Verification Result --- */}
-        {bookVerificationResult && !bookVerificationResult.isMatch && (
-          <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-            <h3 className="font-semibold text-red-900 mb-2">Book Verification Failed</h3>
-            <p className="text-red-700 mb-3">{bookVerificationResult.reason}</p>
-            <p className="text-sm text-red-600 mb-3">
-              Expected: <strong>{scannedData.expectedBook?.name || scannedData.expectedBook?.title}</strong><br/>
-              Scanned: <strong>{identifiedTitle}</strong>
+        {/* Verification Result */}
+        {verificationResult && (
+          <div className={`rounded-lg p-4 border ${
+            verificationResult.isMatch 
+              ? 'bg-green-50 border-green-200' 
+              : 'bg-red-50 border-red-200'
+          }`}>
+            <h3 className={`font-semibold mb-2 ${
+              verificationResult.isMatch ? 'text-green-900' : 'text-red-900'
+            }`}>
+              Verification Result
+            </h3>
+            <p className={
+              verificationResult.isMatch ? 'text-green-700' : 'text-red-700'
+            }>
+              {verificationResult.message}
             </p>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => handleManualVerification(true)}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-              >
-                Use Anyway
-              </button>
-              <button
-                onClick={() => handleManualVerification(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
-              >
-                Scan Correct Book
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* --- Book Suggestions --- */}
-        {showSuggestions && bookSuggestions.length > 0 && (
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-            <h3 className="font-semibold text-blue-900 mb-3">Select a book from suggestions:</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {bookSuggestions.map((book, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSelectSuggestion(book)}
-                  className="w-full text-left p-3 bg-white rounded-lg border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">{book.name || book.title}</div>
-                  {book.author && (
-                    <div className="text-sm text-gray-600">by {book.author}</div>
-                  )}
-                  {book.genre && (
-                    <div className="text-xs text-gray-500">{book.genre}</div>
-                  )}
-                  <div className="text-xs text-blue-600 mt-1">Match score: {book.score}</div>
-                </button>
-              ))}
-            </div>
-            {identifiedTitle && (
-              <div className="mt-3 pt-3 border-t border-blue-200">
-                <button
-                  onClick={handleUseIdentifiedTitle}
-                  className="w-full p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
-                >
-                  Use "{identifiedTitle}" (not in database)
-                </button>
+            {scannedData.detectedBookName && (
+              <div className="mt-3 text-sm">
+                <p><strong>Detected:</strong> {scannedData.detectedBookName}</p>
+                <p><strong>Normalized:</strong> {scannedData.normalizedBookName}</p>
+                <p><strong>Expected Base:</strong> {extractBookBaseName(scannedData.expectedBookId)}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* --- Debug Log --- */}
+        {/* Debug Log */}
         {debugLog.length > 0 && (
           <div className="bg-gray-900 text-green-400 p-3 rounded-lg text-xs font-mono max-h-32 overflow-y-auto">
             <div className="text-gray-500 mb-1">Debug Log:</div>
@@ -783,19 +555,23 @@ function QRScanner({ onScanned }) {
           </div>
         )}
 
-        {/* --- Scan Controls --- */}
+        {/* Scan Controls */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
-            onClick={() => startScanMode('userQR')}
-            disabled={isScanning || isLoading || !isJsqrLoaded}
-            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
+            onClick={() => startScanMode('transactionQR')}
+            disabled={isScanning || isLoading || !isJsqrLoaded || scannedData.transactionId}
+            className={`w-full px-4 py-3 text-white rounded-lg font-semibold transition-all flex items-center justify-center space-x-2 ${
+              scannedData.transactionId 
+                ? 'bg-green-600' 
+                : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400'
+            }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            <span>Scan User QR</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            <span>{scannedData.transactionId ? '✓ Transaction Scanned' : 'Scan Transaction QR'}</span>
           </button>
           <button
             onClick={() => startScanMode('bookCover')}
-            disabled={isScanning || isLoading}
+            disabled={isScanning || isLoading || !scannedData.transactionId}
             className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
           >
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
@@ -809,41 +585,39 @@ function QRScanner({ onScanned }) {
                 disabled={isLoading}
                 className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
             >
-                Capture and Identify Book
+                Capture and Verify Book
             </button>
         )}
 
-        {/* --- Results and Reset --- */}
+        {/* Results and Reset */}
         <div className="border-t pt-6 space-y-4">
             <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-600">Scanned User:</span>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${scannedData.user ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-500'}`}>
-                    {scannedData.user || "None"}
+                <span className="font-medium text-gray-600">Transaction ID:</span>
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${scannedData.transactionId ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-500'}`}>
+                    {scannedData.transactionId || "None"}
                 </span>
             </div>
              <div className="flex justify-between items-center">
-                <span className="font-medium text-gray-600">Scanned Book:</span>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${scannedData.book ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-500'}`}>
-                    {scannedData.book || "None"}
+                <span className="font-medium text-gray-600">Expected Book ID:</span>
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${scannedData.expectedBookId ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-200 text-gray-500'}`}>
+                    {scannedData.expectedBookId || "None"}
                 </span>
             </div>
-            {scannedData.expectedBook && (
+            <div className="flex justify-between items-center">
+                <span className="font-medium text-gray-600">Detected Book:</span>
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${scannedData.detectedBookName ? 'bg-purple-100 text-purple-800' : 'bg-gray-200 text-gray-500'}`}>
+                    {scannedData.detectedBookName || "None"}
+                </span>
+            </div>
+            {verificationResult && (
               <div className="flex justify-between items-center">
-                  <span className="font-medium text-gray-600">Expected Book:</span>
-                  <span className="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
-                      {scannedData.expectedBook.name || scannedData.expectedBook.title || "Unknown"}
-                  </span>
-              </div>
-            )}
-            {bookVerificationResult && (
-              <div className="flex justify-between items-center">
-                  <span className="font-medium text-gray-600">Verification:</span>
+                  <span className="font-medium text-gray-600">Status:</span>
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                    bookVerificationResult.isMatch 
+                    verificationResult.isMatch 
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-red-100 text-red-800'
                   }`}>
-                      {bookVerificationResult.isMatch ? '✅ Match' : '❌ Mismatch'}
+                      {verificationResult.isMatch ? '✅ Approved' : '❌ Rejected'}
                   </span>
               </div>
             )}

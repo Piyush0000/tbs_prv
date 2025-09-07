@@ -9,6 +9,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 
+
 // Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -198,6 +199,96 @@ router.post(
     }
   }
 );
+
+
+router.get('/:transaction_id', async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        console.log('Looking for transaction:', transaction_id);
+        
+        // Populate the book_id to get the actual book_id string
+        const transaction = await Transaction.findOne({ 
+            transaction_id: transaction_id 
+        }).populate('book_id', 'book_id name title'); // Add populate here
+        
+        if (!transaction) {
+            return res.status(404).json({ 
+                error: 'Transaction not found',
+                requestedId: transaction_id
+            });
+        }
+        
+        res.json({
+            transaction_id: transaction.transaction_id,
+            book_id: transaction.book_id?.book_id || transaction.book_id, // Return the string book_id
+            user_id: transaction.user_id,
+            cafe_id: transaction.cafe_id,
+            status: transaction.status,
+            created_at: transaction.created_at
+        });
+        
+    } catch (err) {
+        console.error('Transaction fetch error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/transactions/approve/:transaction_id - Approve transaction (for admin/scanner)
+// PUT /api/transactions/approve/:transaction_id - Approve transaction
+router.put('/approve/:transaction_id', authMiddleware, async (req, res) => {
+    try {
+        const { transaction_id } = req.params;
+        const { book_id } = req.body;
+        
+        console.log('Approving transaction:', transaction_id);
+        
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        
+        try {
+            const transaction = await Transaction.findOne({ 
+                transaction_id: transaction_id,
+                status: 'pickup_pending'
+            }).session(session);
+            
+            if (!transaction) {
+                await session.abortTransaction();
+                return res.status(404).json({ 
+                    error: 'Transaction not found or not in pickup_pending status' 
+                });
+            }
+            
+            // Update transaction
+            transaction.status = 'picked_up';
+            transaction.processed_at = new Date();
+            await transaction.save({ session });
+            
+            // Update book availability
+            const book = await Book.findById(transaction.book_id).session(session);
+            if (book) {
+                book.available = false;
+                await book.save({ session });
+            }
+            
+            await session.commitTransaction();
+            
+            res.status(200).json({
+                message: 'Transaction approved successfully',
+                transaction
+            });
+            
+        } catch (err) {
+            await session.abortTransaction();
+            throw err;
+        } finally {
+            session.endSession();
+        }
+        
+    } catch (err) {
+        console.error('Approve transaction error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // POST /api/transactions/scan/verify - Verify both QR codes and approve transaction
 router.post(
