@@ -892,4 +892,29 @@ router.post('/migrate-subscription-data', authMiddleware, adminMiddleware, async
     }
 });
 
+// GET /api/users: Get all users (admin only)
+router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const users = await User.find().select('-password -otp -otpExpires');
+        res.json(users);
+    } catch (err) {
+        console.error('Error fetching users:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/users/filters: Get filter options
+router.get('/filters', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        res.json({
+            subscription_types: ['basic', 'standard', 'premium'],
+            roles: ['user', 'admin', 'cafe'],
+        });
+    } catch (err) {
+        console.error('Error fetching filter options:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 module.exports = router;

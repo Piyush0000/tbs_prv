@@ -757,14 +757,12 @@ router.post('/reset-password', async (req, res) => {
 
         console.log('OTP verified for password reset');
 
-        // Hash new password (matching your User model's salt rounds)
-        const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-        // Update password and clear OTP
-        user.password = hashedPassword;
+        // IMPORTANT: Set the plain password - let the pre-save hook handle hashing
+        // Do NOT hash it manually here to avoid double-hashing
+        user.password = newPassword;
         user.otp = undefined;
         user.otpExpires = undefined;
+        
         await user.save();
 
         console.log('Password reset successfully');

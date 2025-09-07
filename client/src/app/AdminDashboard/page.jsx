@@ -171,20 +171,19 @@ function AdminDashboard() {
         // Step 4: Fetch users
         console.log('Step 4: Fetching users...');
         try {
-          const usersData = await safeFetch(
-            `${apiUrl}/users`,
-            {
-              headers: { Authorization: `Bearer ${token}` }
-            },
-            abortController.signal
-          );
-          
-          setUsers(usersData);
-          console.log('Users loaded:', usersData.length);
-        } catch (usersError) {
-          console.error('Users fetch failed:', usersError);
-          setUsers([]);
-        }
+  const usersData = await safeFetch(
+    `${apiUrl}/users`,
+    {
+      headers: { Authorization: `Bearer ${token}` }
+    },
+    abortController.signal
+  );
+  setUsers(Array.isArray(usersData) ? usersData : []);
+  console.log('Users loaded:', usersData.length);
+} catch (usersError) {
+  console.error('Users fetch failed:', usersError);
+  setUsers([]);
+}
 
         // Step 5: Fetch transactions
         console.log('Step 5: Fetching transactions...');
@@ -232,6 +231,8 @@ function AdminDashboard() {
       abortController.abort();
     };
   }, []);
+
+  
 
   // Modal drag handlers
   const handleModalMouseDown = (e) => {
@@ -635,6 +636,25 @@ function AdminDashboard() {
     });
   };
 
+  const handleDeleteUser = async (userId) => {
+  const confirmed = window.confirm("Are you sure you want to delete this user?");
+  if (!confirmed) return;
+
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error("Failed to delete user");
+    setUsers(users.filter((u) => u.user_id !== userId));
+  } catch (err) {
+    console.error(err);
+    alert(err.message);
+  }
+};
+
+
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     let token = localStorage.getItem("token");
@@ -873,7 +893,12 @@ function AdminDashboard() {
           <CafesSection data={cafes} setData={setCafes} onEdit={openEditModal} />
         )}
         {activeTab === "users" && (
-          <UsersSection data={users} setData={setUsers} onEdit={openEditModal} />
+          <UsersSection
+  data={users}
+  onEdit={openEditModal}
+  onDelete={handleDeleteUser}
+/>
+
         )}
         {activeTab === "transactions" && (
           <TransactionsSection data={transactions} setData={setTransactions} />
