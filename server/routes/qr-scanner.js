@@ -1,537 +1,253 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
-const Book = require('../models/Book');
-const Transaction = require('../models/Transaction');
-const jwt = require('jsonwebtoken');
+"use client";
+import jsQR from "jsqr";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-// ===================================================================================
-// MIDDLEWARE
-// ===================================================================================
+function EnhancedQRScanner({ onUserScanned, onBookScanned, onBookImageCaptured, mode = "user" }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const isScanningRef = useRef(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [scanningStatus, setScanningStatus] = useState("Initializing camera...");
 
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized: No token provided' });
-  }
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.id;
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      isScanningRef.current = false;
+      let tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
 
-const cafeMiddleware = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.userId);
-    if (!user || (user.role !== 'cafe' && user.role !== 'admin')) {
-      return res.status(403).json({ error: 'Forbidden: Cafe or Admin access required' });
-    }
-    next();
-  } catch (err) {
-    res.status(500).json({ error: 'Server error while verifying cafe role' });
-  }
-};
+  const captureImage = () => {
+    if (!videoRef.current || !canvasRef.current) {
+      setError("Camera not ready");
+      return null;
+    }
 
-// ===================================================================================
-// QR SCANNER FUNCTIONS
-// ===================================================================================
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
 
-/**
- * @route   GET /api/qr-scanner/user/:userId
- * @desc    Get user details and current book status for QR scanning
- * @access  Cafe/Admin
- */
-router.get('/user/:userId', authMiddleware, cafeMiddleware, async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    // Find user by user_id (the public ID, not MongoDB _id)
-    const user = await User.findOne({ user_id: userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    return canvas.toDataURL("image/jpeg", 0.8);
+  };
 
-    // Check user's subscription status
-    const currentDate = new Date();
-    const hasValidSubscription = user.subscription_validity && user.subscription_validity > currentDate;
+  const processBookImage = async () => {
+    setIsLoading(true);
+    setScanningStatus("Analyzing book image...");
+    
+    try {
+      const imageData = captureImage();
+      if (imageData && onBookImageCaptured) {
+        // Extract base64 data (remove data:image/jpeg;base64, prefix)
+        const base64Data = imageData.split(',')[1];
+        await onBookImageCaptured(base64Data);
+        setScanningStatus("Book image processed successfully!");
+      }
+    } catch (error) {
+      setError("Failed to process book image: " + error.message);
+      setScanningStatus("Ready to scan");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    if (!hasValidSubscription) {
-      return res.status(400).json({ 
-        error: 'User does not have an active subscription',
-        user: {
-          user_id: user.user_id,
-          name: user.name,
-          email: user.email,
-          subscription_type: user.subscription_type,
-          subscription_validity: user.subscription_validity
-        }
-      });
-    }
+  const scanFrame = useCallback(() => {
+    if (!isScanningRef.current || !videoRef.current || !canvasRef.current || 
+        videoRef.current.paused || videoRef.current.ended || isLoading) {
+      return;
+    }
 
-    // Get user's current book (if any)
-    let currentBook = null;
-    if (user.book_id) {
-      currentBook = await Book.findOne({ book_id: user.book_id });
-    }
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-    // Check for any pending transactions
-    const pendingTransactions = await Transaction.find({
-      user_id: user._id,
-      status: { $in: ['pickup_pending', 'dropoff_pending'] }
-    }).populate('book_id');
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Only scan for QR codes in QR mode, not in image capture mode
+      if (mode !== "book-image") {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
 
-    const response = {
-      user: {
-        user_id: user.user_id,
-        name: user.name,
-        email: user.email,
-        phone_number: user.phone_number,
-        subscription_type: user.subscription_type,
-        subscription_validity: user.subscription_validity,
-        hasValidSubscription: true
-      },
-      currentBook: currentBook ? {
-        book_id: currentBook.book_id,
-        name: currentBook.name,
-        author: currentBook.author,
-        genre: currentBook.genre,
-        language: currentBook.language
-      } : null,
-      pendingTransactions: pendingTransactions.map(t => ({
-        transaction_id: t.transaction_id,
-        book: {
-          book_id: t.book_id.book_id,
-          name: t.book_id.name,
-          author: t.book_id.author
-        },
-        status: t.status,
-        transaction_date: t.transaction_date
-      })),
-      canTakeNewBook: !user.book_id && pendingTransactions.length === 0,
-      hasBookToReturn: !!user.book_id
-    };
+        if (qrCode?.data) {
+          isScanningRef.current = false;
+          
+          if (mode === "user" && onUserScanned) {
+            onUserScanned(qrCode.data);
+          } else if (mode === "book-qr" && onBookScanned) {
+            onBookScanned(qrCode.data);
+          }
+          
+          setScanningStatus("QR Code scanned successfully!");
+          stopCamera();
+          return;
+        }
+      }
+    }
+    
+    requestAnimationFrame(scanFrame);
+  }, [onUserScanned, onBookScanned, mode, isLoading]);
 
-    res.status(200).json(response);
-  } catch (error) {
-    console.error('Error getting user details:', error);
-    res.status(500).json({ error: 'Failed to get user details' });
-  }
-});
+  const requestCameraPermission = useCallback(async () => {
+    try {
+      setScanningStatus("Requesting camera permission...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        isScanningRef.current = true;
+        
+        if (mode === "book-image") {
+          setScanningStatus("Point camera at book cover and click capture");
+        } else {
+          setScanningStatus(`Scanning for ${mode === "user" ? "user" : "book"} QR code...`);
+          requestAnimationFrame(scanFrame);
+        }
+      }
+    } catch (err) {
+      console.error("Camera permission denied:", err);
+      setError("Camera permission denied. Please allow camera access.");
+      setScanningStatus("Camera access denied");
+    }
+  }, [scanFrame, mode]);
 
-/**
- * @route   POST /api/qr-scanner/assign-book
- * @desc    Assign a book to a user (after QR scanning)
- * @access  Cafe/Admin
- */
-router.post('/assign-book', authMiddleware, cafeMiddleware, async (req, res) => {
-  try {
-    const { userId, bookId } = req.body;
+  useEffect(() => {
+    requestCameraPermission();
+    return () => stopCamera();
+  }, [requestCameraPermission]);
 
-    if (!userId || !bookId) {
-      return res.status(400).json({ error: 'User ID and Book ID are required' });
-    }
+  return (
+    <div className="relative w-full max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4">
+        <h3 className="text-lg font-semibold">
+          {mode === "user" && "Scan User QR Code"}
+          {mode === "book-qr" && "Scan Book QR Code"}
+          {mode === "book-image" && "Capture Book Image"}
+        </h3>
+        <p className="text-sm opacity-90">{scanningStatus}</p>
+      </div>
 
-    // Find user
-    const user = await User.findOne({ user_id: userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+      {/* Camera View */}
+      <div className="relative aspect-square bg-black">
+        <video
+          ref={videoRef}
+          playsInline
+          className="w-full h-full object-cover"
+          style={{ transform: "scaleX(-1)" }} // Mirror effect
+        />
+        
+        {/* Scanning Overlay */}
+        <div className="absolute inset-0 pointer-events-none">
+          {/* QR Code Scanner Overlay */}
+          {(mode === "user" || mode === "book-qr") && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-64 h-64 border-2 border-white rounded-lg relative">
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg"></div>
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg"></div>
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg"></div>
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded">
+                    Align QR Code here
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Book Image Capture Overlay */}
+          {mode === "book-image" && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-80 h-96 border-2 border-white rounded-lg relative">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-white text-sm bg-black bg-opacity-50 px-2 py-1 rounded text-center">
+                    Position book cover<br />within frame
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="text-white text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-2"></div>
+              <p>Processing...</p>
+            </div>
+          </div>
+        )}
+      </div>
 
-    // Check subscription validity
-    const currentDate = new Date();
-    const hasValidSubscription = user.subscription_validity && user.subscription_validity > currentDate;
-    
-    if (!hasValidSubscription) {
-      return res.status(400).json({ 
-        error: 'User does not have an active subscription' 
-      });
-    }
+      {/* Controls */}
+      <div className="p-4 space-y-3">
+        {mode === "book-image" && (
+          <button
+            onClick={processBookImage}
+            disabled={isLoading}
+            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+              isLoading
+                ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed text-gray-500"
+                : "bg-blue-600 hover:bg-blue-700 text-white"
+            }`}
+          >
+            {isLoading ? "Processing..." : "Capture Book Image"}
+          </button>
+        )}
+        
+        {/* Instructions */}
+        <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+          {mode === "user" && (
+            <>
+              <p>• Position the user's QR code in the center frame</p>
+              <p>• Ensure good lighting for best results</p>
+              <p>• Hold steady until scan completes</p>
+            </>
+          )}
+          {mode === "book-qr" && (
+            <>
+              <p>• Scan the transaction QR code from the app</p>
+              <p>• Make sure the QR code is clearly visible</p>
+              <p>• This verifies the book transaction</p>
+            </>
+          )}
+          {mode === "book-image" && (
+            <>
+              <p>• Position book cover clearly in frame</p>
+              <p>• Ensure title and author are readable</p>
+              <p>• Good lighting improves recognition</p>
+            </>
+          )}
+        </div>
 
-    // Check if user already has a book
-    if (user.book_id) {
-      const currentBook = await Book.findOne({ book_id: user.book_id });
-      return res.status(400).json({ 
-        error: 'User already has a book assigned',
-        message: 'Please return the current book before taking a new one',
-        currentBook: currentBook ? {
-          book_id: currentBook.book_id,
-          name: currentBook.name,
-          author: currentBook.author
-        } : null
-      });
-    }
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg p-3">
+            <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
+          </div>
+        )}
+      </div>
 
-    // Check for pending transactions
-    const pendingTransactions = await Transaction.find({
-      user_id: user._id,
-      status: { $in: ['pickup_pending', 'dropoff_pending'] }
-    });
+      {/* Hidden canvas for image processing */}
+      <canvas ref={canvasRef} className="hidden"></canvas>
+    </div>
+  );
+}
 
-    if (pendingTransactions.length > 0) {
-      return res.status(400).json({ 
-        error: 'User has pending transactions. Please complete them first.' 
-      });
-    }
-
-    // Find and check book availability
-    const book = await Book.findOne({ book_id: bookId });
-    if (!book) {
-      return res.status(404).json({ error: 'Book not found' });
-    }
-
-    if (!book.available) {
-      return res.status(400).json({ 
-        error: 'Book is not available for assignment',
-        book: {
-          book_id: book.book_id,
-          name: book.name,
-          author: book.author
-        }
-      });
-    }
-
-    // Assign book to user
-    user.book_id = book.book_id;
-    await user.save();
-
-    // Make book unavailable
-    book.available = false;
-    book.updatedAt = new Date();
-    await book.save();
-
-    // Create transaction record
-    const transaction = new Transaction({
-      user_id: user._id,
-      book_id: book._id,
-      transaction_type: 'pickup',
-      status: 'completed',
-      transaction_date: new Date()
-    });
-    await transaction.save();
-
-    console.log(`Book ${book.book_id} assigned to user ${user.user_id}`);
-
-    res.status(200).json({
-      message: 'Book assigned successfully',
-      user: {
-        user_id: user.user_id,
-        name: user.name
-      },
-      book: {
-        book_id: book.book_id,
-        name: book.name,
-        author: book.author,
-        genre: book.genre
-      },
-      transaction: {
-        transaction_id: transaction.transaction_id,
-        transaction_date: transaction.transaction_date
-      }
-    });
-
-  } catch (error) {
-    console.error('Error assigning book:', error);
-    res.status(500).json({ error: 'Failed to assign book' });
-  }
-});
-
-/**
- * @route   POST /api/qr-scanner/return-book
- * @desc    Return a book from a user (unassign)
- * @access  Cafe/Admin
- */
-router.post('/return-book', authMiddleware, cafeMiddleware, async (req, res) => {
-  try {
-    const { userId, bookId, confirmation = false } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
-
-    // Find user
-    const user = await User.findOne({ user_id: userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Check if user has any book assigned
-    if (!user.book_id) {
-      return res.status(400).json({ 
-        error: 'User does not have any book assigned' 
-      });
-    }
-
-    // If specific book ID provided, verify it matches user's book
-    if (bookId && user.book_id !== bookId) {
-      return res.status(400).json({ 
-        error: 'The specified book is not assigned to this user',
-        userBook: user.book_id,
-        requestedBook: bookId
-      });
-    }
-
-    // Get the book details
-    const book = await Book.findOne({ book_id: user.book_id });
-    if (!book) {
-      return res.status(404).json({ 
-        error: 'Book not found in database',
-        book_id: user.book_id 
-      });
-    }
-
-    // If no confirmation provided, ask for confirmation
-    if (!confirmation) {
-      return res.status(200).json({
-        requiresConfirmation: true,
-        message: 'Please confirm book return',
-        user: {
-          user_id: user.user_id,
-          name: user.name
-        },
-        book: {
-          book_id: book.book_id,
-          name: book.name,
-          author: book.author,
-          genre: book.genre
-        }
-      });
-    }
-
-    // Process the return
-    const returnedBookId = user.book_id;
-    user.book_id = null;
-    await user.save();
-
-    // Make book available again
-    book.available = true;
-    book.updatedAt = new Date();
-    await book.save();
-
-    // Create return transaction record
-    const transaction = new Transaction({
-      user_id: user._id,
-      book_id: book._id,
-      transaction_type: 'dropoff',
-      status: 'completed',
-      transaction_date: new Date()
-    });
-    await transaction.save();
-
-    console.log(`Book ${returnedBookId} returned by user ${user.user_id}`);
-
-    res.status(200).json({
-      message: 'Book returned successfully',
-      user: {
-        user_id: user.user_id,
-        name: user.name
-      },
-      returnedBook: {
-        book_id: book.book_id,
-        name: book.name,
-        author: book.author
-      },
-      transaction: {
-        transaction_id: transaction.transaction_id,
-        transaction_date: transaction.transaction_date
-      }
-    });
-
-  } catch (error) {
-    console.error('Error returning book:', error);
-    res.status(500).json({ error: 'Failed to return book' });
-  }
-});
-
-/**
- * @route   GET /api/qr-scanner/user-books/:userId
- * @desc    Get all books currently with a user
- * @access  Cafe/Admin
- */
-router.get('/user-books/:userId', authMiddleware, cafeMiddleware, async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    const user = await User.findOne({ user_id: userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const books = [];
-    if (user.book_id) {
-      const book = await Book.findOne({ book_id: user.book_id });
-      if (book) {
-        books.push({
-          book_id: book.book_id,
-          name: book.name,
-          author: book.author,
-          genre: book.genre,
-          language: book.language
-        });
-      }
-    }
-
-    res.status(200).json({
-      user: {
-        user_id: user.user_id,
-        name: user.name,
-        email: user.email
-      },
-      books: books,
-      totalBooks: books.length
-    });
-
-  } catch (error) {
-    console.error('Error getting user books:', error);
-    res.status(500).json({ error: 'Failed to get user books' });
-  }
-});
-
-/**
- * @route   POST /api/qr-scanner/force-return
- * @desc    Force return a book without user confirmation (emergency)
- * @access  Admin only
- */
-router.post('/force-return', authMiddleware, async (req, res) => {
-  try {
-    // Check admin role
-    const adminUser = await User.findById(req.userId);
-    if (!adminUser || adminUser.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
-    const { userId, bookId, reason } = req.body;
-
-    if (!userId || !reason) {
-      return res.status(400).json({ error: 'User ID and reason are required' });
-    }
-
-    const user = await User.findOne({ user_id: userId });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    if (!user.book_id) {
-      return res.status(400).json({ error: 'User has no book assigned' });
-    }
-
-    if (bookId && user.book_id !== bookId) {
-      return res.status(400).json({ error: 'Book ID does not match user\'s assigned book' });
-    }
-
-    const book = await Book.findOne({ book_id: user.book_id });
-    if (!book) {
-      return res.status(404).json({ error: 'Book not found' });
-    }
-
-    // Force return
-    const returnedBookId = user.book_id;
-    user.book_id = null;
-    await user.save();
-
-    book.available = true;
-    book.updatedAt = new Date();
-    await book.save();
-
-    // Create transaction with reason
-    const transaction = new Transaction({
-      user_id: user._id,
-      book_id: book._id,
-      transaction_type: 'dropoff',
-      status: 'completed',
-      transaction_date: new Date(),
-      notes: `Force return by admin: ${reason}`
-    });
-    await transaction.save();
-
-    console.log(`Force return: Book ${returnedBookId} from user ${user.user_id}. Reason: ${reason}`);
-
-    res.status(200).json({
-      message: 'Book force returned successfully',
-      user: {
-        user_id: user.user_id,
-        name: user.name
-      },
-      returnedBook: {
-        book_id: book.book_id,
-        name: book.name,
-        author: book.author
-      },
-      reason: reason,
-      transaction: {
-        transaction_id: transaction.transaction_id,
-        transaction_date: transaction.transaction_date
-      }
-    });
-
-  } catch (error) {
-    console.error('Error in force return:', error);
-    res.status(500).json({ error: 'Failed to force return book' });
-  }
-});
-
-/**
- * @route   GET /api/qr-scanner/book-status/:bookId
- * @desc    Get current status and assignment details of a book
- * @access  Cafe/Admin
- */
-router.get('/book-status/:bookId', authMiddleware, cafeMiddleware, async (req, res) => {
-  try {
-    const { bookId } = req.params;
-    
-    const book = await Book.findOne({ book_id: bookId });
-    if (!book) {
-      return res.status(404).json({ error: 'Book not found' });
-    }
-
-    let assignedUser = null;
-    if (!book.available) {
-      // Find who has this book
-      const user = await User.findOne({ book_id: bookId });
-      if (user) {
-        assignedUser = {
-          user_id: user.user_id,
-          name: user.name,
-          email: user.email,
-          phone_number: user.phone_number
-        };
-      }
-    }
-
-    // Get recent transactions for this book
-    const recentTransactions = await Transaction.find({ book_id: book._id })
-      .sort({ transaction_date: -1 })
-      .limit(5)
-      .populate('user_id', 'user_id name email');
-
-    res.status(200).json({
-      book: {
-        book_id: book.book_id,
-        name: book.name,
-        author: book.author,
-        genre: book.genre,
-        language: book.language,
-        available: book.available
-      },
-      assignedUser: assignedUser,
-      recentTransactions: recentTransactions.map(t => ({
-        transaction_id: t.transaction_id,
-        transaction_type: t.transaction_type,
-        status: t.status,
-        transaction_date: t.transaction_date,
-        user: {
-          user_id: t.user_id.user_id,
-          name: t.user_id.name
-        }
-      }))
-    });
-
-  } catch (error) {
-    console.error('Error getting book status:', error);
-    res.status(500).json({ error: 'Failed to get book status' });
-  }
-});
-
-module.exports = router;
+export default EnhancedQRScanner;
