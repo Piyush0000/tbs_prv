@@ -2,8 +2,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 function QRScanner({ onScanned }) {
-  const [scannedData, setScannedData] = useState({ user: null, book: null });
-  const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookQR', 'bookCover'
+  const [scannedData, setScannedData] = useState({ user: null, book: null, expectedBook: null });
+  const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookCover'
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -12,10 +12,11 @@ function QRScanner({ onScanned }) {
   const [isJsqrLoaded, setIsJsqrLoaded] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
   
-  // New states for book suggestions
+  // States for book suggestions and verification
   const [bookSuggestions, setBookSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [identifiedTitle, setIdentifiedTitle] = useState("");
+  const [bookVerificationResult, setBookVerificationResult] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -31,17 +32,33 @@ function QRScanner({ onScanned }) {
   const parseQRData = (qrData) => {
     console.log(`Parsing QR data: ${qrData}`);
     
-    // Check if it's a transaction QR (format: TXN_timestamp_hash.User_ID)
+    // Check if it's a transaction QR (format: TXN_timestamp_hash.User_ID.Book_ID)
     if (qrData.startsWith('TXN_')) {
       const parts = qrData.split('.');
-      if (parts.length === 2 && parts[1].startsWith('User_')) {
+      if (parts.length >= 2) {
         const userId = parts[1]; // Extract User_038
+        const bookId = parts.length > 2 ? parts[2] : null; // Extract Book_ID if present
         const transactionId = parts[0]; // Extract TXN_1757178592907_vhxwu1
-        console.log(`Extracted User ID: ${userId}, Transaction ID: ${transactionId}`);
+        console.log(`Extracted User ID: ${userId}, Book ID: ${bookId}, Transaction ID: ${transactionId}`);
         return {
           type: 'transaction',
           userId: userId,
+          bookId: bookId,
           transactionId: transactionId,
+          fullData: qrData
+        };
+      }
+    }
+    
+    // Check if it's a compound QR (User_ID.Book_ID)
+    if (qrData.includes('.')) {
+      const parts = qrData.split('.');
+      if (parts.length === 2) {
+        return {
+          type: 'compound',
+          userId: parts[0],
+          bookId: parts[1],
+          transactionId: null,
           fullData: qrData
         };
       }
@@ -52,18 +69,8 @@ function QRScanner({ onScanned }) {
       return {
         type: 'user',
         userId: qrData,
+        bookId: null,
         transactionId: null,
-        fullData: qrData
-      };
-    }
-    
-    // Check if it's a simple transaction ID format
-    if (qrData.includes('.')) {
-      const parts = qrData.split('.');
-      return {
-        type: 'mixed',
-        transactionId: parts[0],
-        userId: parts[1],
         fullData: qrData
       };
     }
@@ -71,6 +78,7 @@ function QRScanner({ onScanned }) {
     return {
       type: 'unknown',
       userId: qrData,
+      bookId: null,
       transactionId: null,
       fullData: qrData
     };
@@ -152,54 +160,13 @@ function QRScanner({ onScanned }) {
     }
   };
 
-  // Function to fetch user data from MongoDB with QR parsing
-  // Function to fetch user data from MongoDB with QR parsing
-const fetchUserData = async (qrData) => {
-  try {
-    console.log(`=== FETCHUSERDATA DEBUG ===`);
-    console.log(`Raw QR data: ${qrData}`);
-    
-    // Add explicit check for parseQRData function
-    if (typeof parseQRData !== 'function') {
-      console.error('parseQRData function is not available!');
-      throw new Error('parseQRData function is not defined');
-    }
-    
-    const parsed = parseQRData(qrData);
-    console.log(`Parsed result:`, parsed);
-    
-    // Use the parsed user ID instead of raw QR data
-    const userId = parsed.userId;
-    console.log(`Using User ID: ${userId}`);
-    console.log(`Full API URL: ${API_BASE_URL}/users/${userId}`);
-    
-    addDebugLog(`Fetching user data for ID: ${userId}`);
-    const response = await fetch(`${API_BASE_URL}/users/${userId}`);
-    
-    if (!response.ok) {
-      throw new Error(`User API call failed with status: ${response.status}`);
-    }
-    
-    const userData = await response.json();
-    addDebugLog(`User found: ${userData.name || userData.username}`);
-    return userData;
-  } catch (err) {
-    console.error(`=== FETCHUSERDATA ERROR ===`, err);
-    addDebugLog(`User fetch error: ${err.message}`, 'error');
-    throw err;
-  }
-};
-
-  // Function to fetch book data from MongoDB by ID
+  // Function to fetch book data from the API
   const fetchBookData = async (bookId) => {
     try {
       addDebugLog(`Fetching book data for ID: ${bookId}`);
-      const response = await fetch(`${API_BASE_URL}/books/details/${bookId}`);
+      const response = await fetch(`${API_BASE_URL}/books/${bookId}`);
       
       if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Book not found in database');
-        }
         throw new Error(`Book API call failed with status: ${response.status}`);
       }
       
@@ -208,6 +175,59 @@ const fetchUserData = async (qrData) => {
       return bookData;
     } catch (err) {
       addDebugLog(`Book fetch error: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Function to fetch user data from MongoDB with QR parsing and book details
+  const fetchUserData = async (qrData) => {
+    try {
+      console.log(`=== FETCHUSERDATA DEBUG ===`);
+      console.log(`Raw QR data: ${qrData}`);
+      
+      if (typeof parseQRData !== 'function') {
+        console.error('parseQRData function is not available!');
+        throw new Error('parseQRData function is not defined');
+      }
+      
+      const parsed = parseQRData(qrData);
+      console.log(`Parsed result:`, parsed);
+      
+      const userId = parsed.userId;
+      const bookId = parsed.bookId;
+      console.log(`Using User ID: ${userId}, Book ID: ${bookId}`);
+      
+      // Fetch user data
+      addDebugLog(`Fetching user data for ID: ${userId}`);
+      const userResponse = await fetch(`${API_BASE_URL}/users/${userId}`);
+      
+      if (!userResponse.ok) {
+        throw new Error(`User API call failed with status: ${userResponse.status}`);
+      }
+      
+      const userData = await userResponse.json();
+      addDebugLog(`User found: ${userData.name || userData.username}`);
+      
+      // If bookId is present, fetch book data as well
+      let expectedBookData = null;
+      if (bookId) {
+        try {
+          expectedBookData = await fetchBookData(bookId);
+          addDebugLog(`Expected book: ${expectedBookData.name || expectedBookData.title}`);
+        } catch (bookErr) {
+          addDebugLog(`Failed to fetch expected book: ${bookErr.message}`, 'error');
+          // Continue without book data - user scan still successful
+        }
+      }
+      
+      return {
+        user: userData,
+        expectedBook: expectedBookData,
+        qrInfo: parsed
+      };
+    } catch (err) {
+      console.log(`=== FETCHUSERDATA ERROR ===`, err);
+      addDebugLog(`User fetch error: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -290,40 +310,87 @@ const fetchUserData = async (qrData) => {
     }
   };
 
+  // Function to verify if scanned book matches expected book
+  const verifyBookMatch = (scannedBookTitle, expectedBook) => {
+    if (!expectedBook) {
+      return { isMatch: false, reason: "No expected book to compare with" };
+    }
+    
+    const expectedTitle = (expectedBook.name || expectedBook.title || '').toLowerCase().trim();
+    const scannedTitle = scannedBookTitle.toLowerCase().trim();
+    
+    // Exact match
+    if (expectedTitle === scannedTitle) {
+      return { isMatch: true, confidence: 100 };
+    }
+    
+    // Word-based matching
+    const expectedWords = expectedTitle.split(' ').filter(word => word.length > 2);
+    const scannedWords = scannedTitle.split(' ').filter(word => word.length > 2);
+    
+    let matchingWords = 0;
+    let totalWords = Math.max(expectedWords.length, scannedWords.length);
+    
+    expectedWords.forEach(expectedWord => {
+      if (scannedWords.some(scannedWord => 
+          scannedWord.includes(expectedWord) || expectedWord.includes(scannedWord)
+      )) {
+        matchingWords++;
+      }
+    });
+    
+    const confidence = totalWords > 0 ? (matchingWords / totalWords) * 100 : 0;
+    
+    return {
+      isMatch: confidence >= 60, // Consider it a match if 60% of words match
+      confidence: Math.round(confidence),
+      reason: confidence >= 60 ? 
+        `Strong match with ${confidence}% word similarity` : 
+        `Weak match with only ${confidence}% word similarity`
+    };
+  };
+
   // Handles the result of a successful QR code scan
   const handleQrScan = async (data) => {
     if (!data) return;
     setIsScanning(false); // Stop scanning after a successful read
     setIsLoading(true);
-    setInfo(`Processing ${scanMode === 'userQR' ? 'user' : 'book'}...`);
+    setInfo(`Processing user and book information...`);
     addDebugLog(`QR code scanned: ${data}`);
 
     try {
-      if (scanMode === 'userQR') {
-        const userData = await fetchUserData(data);
-        const userName = userData.name || userData.username || 'Unknown User';
-        setScannedData(prev => ({ ...prev, user: userName }));
-        setInfo(`User '${userName}' scanned successfully.`);
-      } else if (scanMode === 'bookQR') {
-        const bookData = await fetchBookData(data);
-        const bookTitle = bookData.name || bookData.title || 'Unknown Book';
-        setScannedData(prev => ({ ...prev, book: bookTitle }));
-        setInfo(`Book '${bookTitle}' scanned successfully.`);
+      const { user, expectedBook, qrInfo } = await fetchUserData(data);
+      const userName = user.name || user.username || 'Unknown User';
+      
+      // Update scanned data with user and expected book information
+      setScannedData(prev => ({ 
+        ...prev, 
+        user: userName,
+        expectedBook: expectedBook
+      }));
+      
+      if (expectedBook) {
+        const expectedBookTitle = expectedBook.name || expectedBook.title || 'Unknown Book';
+        setInfo(`User '${userName}' scanned successfully. Expected book: '${expectedBookTitle}'. Now scan the book cover to verify.`);
+        addDebugLog(`Expected book set: ${expectedBookTitle}`);
+      } else {
+        setInfo(`User '${userName}' scanned successfully. Now scan any book cover.`);
+        addDebugLog("No expected book found in QR code");
       }
     } catch (err) {
       addDebugLog(`Scan processing error: ${err.message}`, 'error');
-      setError(err.message || `Failed to process ${scanMode === 'userQR' ? 'user' : 'book'}`);
+      setError(err.message || `Failed to process user`);
     } finally {
       setIsLoading(false);
       setScanMode(null); // Reset mode after scan
     }
   };
 
-  // Handles the book cover scan using Gemini API
+  // Enhanced book cover scan with verification
   const handleBookCoverScan = async () => {
     if (!isScanning || !videoRef.current || !canvasRef.current) {
-        setError("Scanner not ready. Please start the scanner first.");
-        return;
+      setError("Scanner not ready. Please start the scanner first.");
+      return;
     }
     
     setIsLoading(true);
@@ -345,96 +412,121 @@ const fetchUserData = async (qrData) => {
     const prompt = "Identify the title of the book in this image. Respond with only the book title, nothing else.";
 
     const payload = {
-        contents: [
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
             {
-                role: "user",
-                parts: [
-                    { text: prompt },
-                    {
-                        inlineData: {
-                            mimeType: "image/png",
-                            data: base64ImageData
-                        }
-                    }
-                ]
+              inlineData: {
+                mimeType: "image/png",
+                data: base64ImageData
+              }
             }
-        ],
+          ]
+        }
+      ],
     };
 
     try {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
-            throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
-        }
+      if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+        throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
+      }
 
-        // Fixed API URL format
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+      
+      addDebugLog("Making Gemini API request...");
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      addDebugLog(`Gemini API response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog(`Gemini API error response: ${errorText}`, 'error');
+        throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
+      }
+
+      const result = await response.json();
+      addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
+      
+      const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (text) {
+        const bookTitle = text.trim();
+        setIdentifiedTitle(bookTitle);
+        addDebugLog(`Book title identified by AI: ${bookTitle}`);
         
-        addDebugLog("Making Gemini API request...");
-        
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-        });
-
-        addDebugLog(`Gemini API response status: ${response.status}`);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            addDebugLog(`Gemini API error response: ${errorText}`, 'error');
-            throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
-        }
-
-        const result = await response.json();
-        addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
-        
-        const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (text) {
-            const bookTitle = text.trim();
-            setIdentifiedTitle(bookTitle);
-            addDebugLog(`Book title identified by AI: ${bookTitle}`);
-            
-            // Search for this book in your database with suggestions
+        // Check if we have an expected book to verify against
+        if (scannedData.expectedBook) {
+          const verification = verifyBookMatch(bookTitle, scannedData.expectedBook);
+          setBookVerificationResult(verification);
+          
+          if (verification.isMatch) {
+            const expectedBookTitle = scannedData.expectedBook.name || scannedData.expectedBook.title;
+            setScannedData(prev => ({ ...prev, book: expectedBookTitle }));
+            setInfo(`✅ Book verified! Scanned book matches expected book '${expectedBookTitle}' (${verification.confidence}% confidence).`);
+            addDebugLog(`Book verification successful: ${verification.confidence}% confidence`);
+          } else {
+            setInfo(`❌ Book mismatch! Scanned '${bookTitle}' but expected '${scannedData.expectedBook.name || scannedData.expectedBook.title}'. ${verification.reason}`);
+            addDebugLog(`Book verification failed: ${verification.reason}`);
+            // Still show suggestions for the scanned book
             try {
               const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
-              
-              if (exactMatch) {
-                // Exact match found
-                const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
-                setScannedData(prev => ({ ...prev, book: finalBookTitle }));
-                setInfo(`Book '${finalBookTitle}' found in database!`);
-                addDebugLog(`Exact match found: ${finalBookTitle}`);
-                setShowSuggestions(false);
-              } else if (suggestions.length > 0) {
-                // Show suggestions
+              if (suggestions.length > 0) {
                 setBookSuggestions(suggestions);
                 setShowSuggestions(true);
-                setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
-                addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
-              } else {
-                // No matches found
-                setInfo(`Book '${bookTitle}' identified but not found in library database.`);
-                setShowSuggestions(false);
-                addDebugLog("No matches found in database");
               }
             } catch (searchErr) {
               addDebugLog(`Database search error: ${searchErr.message}`, 'error');
-              setInfo(`Book '${bookTitle}' identified (database search failed)`);
-              setShowSuggestions(false);
             }
+          }
         } else {
-            throw new Error("Could not identify the book title from the image.");
+          // No expected book - proceed with normal book identification
+          try {
+            const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
+            
+            if (exactMatch) {
+              // Exact match found
+              const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
+              setScannedData(prev => ({ ...prev, book: finalBookTitle }));
+              setInfo(`Book '${finalBookTitle}' found in database!`);
+              addDebugLog(`Exact match found: ${finalBookTitle}`);
+              setShowSuggestions(false);
+            } else if (suggestions.length > 0) {
+              // Show suggestions
+              setBookSuggestions(suggestions);
+              setShowSuggestions(true);
+              setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
+              addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
+            } else {
+              // No matches found
+              setInfo(`Book '${bookTitle}' identified but not found in library database.`);
+              setShowSuggestions(false);
+              addDebugLog("No matches found in database");
+            }
+          } catch (searchErr) {
+            addDebugLog(`Database search error: ${searchErr.message}`, 'error');
+            setInfo(`Book '${bookTitle}' identified (database search failed)`);
+            setShowSuggestions(false);
+          }
         }
+      } else {
+        throw new Error("Could not identify the book title from the image.");
+      }
     } catch (err) {
-        addDebugLog(`Gemini API error: ${err.message}`, 'error');
-        setError(err.message || "Failed to analyze book cover.");
+      addDebugLog(`Gemini API error: ${err.message}`, 'error');
+      setError(err.message || "Failed to analyze book cover.");
     } finally {
-        setIsLoading(false);
-        setScanMode(null);
-        stopCamera();
+      setIsLoading(false);
+      setScanMode(null);
+      stopCamera();
     }
   };
 
@@ -457,6 +549,18 @@ const fetchUserData = async (qrData) => {
     addDebugLog(`User chose to use AI-identified title: ${identifiedTitle}`);
   };
 
+  // Handle manual verification override
+  const handleManualVerification = (accept) => {
+    if (accept) {
+      setScannedData(prev => ({ ...prev, book: identifiedTitle }));
+      setInfo(`✅ Manual verification: Using '${identifiedTitle}' as the correct book.`);
+    } else {
+      setInfo(`❌ Manual verification: Book mismatch confirmed. Please scan the correct book.`);
+    }
+    setBookVerificationResult(null);
+    addDebugLog(`Manual verification: ${accept ? 'accepted' : 'rejected'}`);
+  };
+
   // Main scanning loop that runs on every frame
   const scanFrame = useCallback(() => {
     if (!isScanning || !videoRef.current || !canvasRef.current || !streamRef.current || !isJsqrLoaded) return;
@@ -474,15 +578,15 @@ const fetchUserData = async (qrData) => {
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Only try to decode QR codes if in a QR mode
-    if (scanMode === 'userQR' || scanMode === 'bookQR') {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // Use window.jsQR as the library is loaded globally
-        const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
+    // Only try to decode QR codes if in userQR mode
+    if (scanMode === 'userQR') {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Use window.jsQR as the library is loaded globally
+      const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
 
-        if (qrCode?.data) {
-            handleQrScan(qrCode.data);
-        }
+      if (qrCode?.data) {
+        handleQrScan(qrCode.data);
+      }
     }
 
     // Continue loop if still scanning
@@ -496,19 +600,21 @@ const fetchUserData = async (qrData) => {
     setError(null);
     setShowSuggestions(false);
     setBookSuggestions([]);
+    setBookVerificationResult(null);
     setScanMode(mode);
     setIsScanning(true);
     addDebugLog(`Starting scan mode: ${mode}`);
+    
     if (mode === 'bookCover') {
-        setInfo("Point the camera at the book cover and press 'Scan Cover'");
+      setInfo("Point the camera at the book cover and press 'Scan Cover'");
     } else {
-        setInfo(`Scanning for a ${mode === 'userQR' ? 'user' : 'book'} QR code...`);
+      setInfo(`Scanning for a QR code (User or Book)...`);
     }
   };
 
   // Reset the entire scanner state
   const resetScanner = () => {
-    setScannedData({ user: null, book: null });
+    setScannedData({ user: null, book: null, expectedBook: null });
     setScanMode(null);
     setIsScanning(false);
     setIsLoading(false);
@@ -518,18 +624,25 @@ const fetchUserData = async (qrData) => {
     setShowSuggestions(false);
     setBookSuggestions([]);
     setIdentifiedTitle("");
+    setBookVerificationResult(null);
     addDebugLog("Scanner reset");
     stopCamera();
   };
   
   // Effect to call the parent component's callback when both items are scanned
   useEffect(() => {
-    if (scannedData.user && scannedData.book) {
-        onScanned(scannedData);
-        setInfo("User and Book successfully scanned! Ready to reset.");
-        addDebugLog("Both user and book scanned successfully");
+    if (scannedData.user && scannedData.book && typeof onScanned === 'function') {
+      const resultData = {
+        user: scannedData.user,
+        book: scannedData.book,
+        expectedBook: scannedData.expectedBook,
+        verification: bookVerificationResult
+      };
+      onScanned(resultData);
+      setInfo("User and Book successfully scanned! Ready to reset.");
+      addDebugLog("Both user and book scanned successfully");
     }
-  }, [scannedData, onScanned]);
+  }, [scannedData, onScanned, bookVerificationResult]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
@@ -561,7 +674,7 @@ const fetchUserData = async (qrData) => {
               </button>
             </div>
           )}
-           {isScanning && scanMode !== 'bookCover' && (
+           {isScanning && scanMode === 'userQR' && (
                 <div className="absolute inset-0 border-8 border-white/20 rounded-lg animate-pulse"></div>
             )}
         </div>
@@ -580,6 +693,48 @@ const fetchUserData = async (qrData) => {
                 <p className="text-gray-700">{info}</p>
             )}
         </div>
+
+        {/* --- Expected Book Display --- */}
+        {scannedData.expectedBook && (
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-2">Expected Book from QR:</h3>
+            <div className="bg-white rounded-lg p-3 border border-blue-200">
+              <div className="font-medium text-gray-900">{scannedData.expectedBook.name || scannedData.expectedBook.title}</div>
+              {scannedData.expectedBook.author && (
+                <div className="text-sm text-gray-600">by {scannedData.expectedBook.author}</div>
+              )}
+              {scannedData.expectedBook.genre && (
+                <div className="text-xs text-gray-500">{scannedData.expectedBook.genre}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- Book Verification Result --- */}
+        {bookVerificationResult && !bookVerificationResult.isMatch && (
+          <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+            <h3 className="font-semibold text-red-900 mb-2">Book Verification Failed</h3>
+            <p className="text-red-700 mb-3">{bookVerificationResult.reason}</p>
+            <p className="text-sm text-red-600 mb-3">
+              Expected: <strong>{scannedData.expectedBook?.name || scannedData.expectedBook?.title}</strong><br/>
+              Scanned: <strong>{identifiedTitle}</strong>
+            </p>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => handleManualVerification(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+              >
+                Use Anyway
+              </button>
+              <button
+                onClick={() => handleManualVerification(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+              >
+                Scan Correct Book
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* --- Book Suggestions --- */}
         {showSuggestions && bookSuggestions.length > 0 && (
@@ -629,22 +784,14 @@ const fetchUserData = async (qrData) => {
         )}
 
         {/* --- Scan Controls --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
             onClick={() => startScanMode('userQR')}
             disabled={isScanning || isLoading || !isJsqrLoaded}
             className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            <span>Scan User</span>
-          </button>
-          <button
-            onClick={() => startScanMode('bookQR')}
-            disabled={isScanning || isLoading || !isJsqrLoaded}
-            className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-            <span>Scan Book QR</span>
+            <span>Scan User QR</span>
           </button>
           <button
             onClick={() => startScanMode('bookCover')}
@@ -652,7 +799,7 @@ const fetchUserData = async (qrData) => {
             className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
           >
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-            <span>Scan Cover</span>
+            <span>Scan Book Cover</span>
           </button>
         </div>
         
@@ -680,11 +827,31 @@ const fetchUserData = async (qrData) => {
                     {scannedData.book || "None"}
                 </span>
             </div>
+            {scannedData.expectedBook && (
+              <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-600">Expected Book:</span>
+                  <span className="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
+                      {scannedData.expectedBook.name || scannedData.expectedBook.title || "Unknown"}
+                  </span>
+              </div>
+            )}
+            {bookVerificationResult && (
+              <div className="flex justify-between items-center">
+                  <span className="font-medium text-gray-600">Verification:</span>
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                    bookVerificationResult.isMatch 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                      {bookVerificationResult.isMatch ? '✅ Match' : '❌ Mismatch'}
+                  </span>
+              </div>
+            )}
             <button
               onClick={resetScanner}
               className="w-full px-6 py-3 mt-4 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 hover:border-gray-400 transition-colors"
             >
-              Reset
+              Reset Scanner
             </button>
         </div>
       </div>

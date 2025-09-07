@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 function QRScanner({ onScanned }) {
   const [scannedData, setScannedData] = useState({ user: null, book: null });
-  const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookQR', 'bookCover'
+  const [scanMode, setScanMode] = useState(null); // 'userQR', 'bookCover'
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -12,7 +12,7 @@ function QRScanner({ onScanned }) {
   const [isJsqrLoaded, setIsJsqrLoaded] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
   
-  // New states for book suggestions
+  // States for book suggestions
   const [bookSuggestions, setBookSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [identifiedTitle, setIdentifiedTitle] = useState("");
@@ -153,61 +153,36 @@ function QRScanner({ onScanned }) {
   };
 
   // Function to fetch user data from MongoDB with QR parsing
-  // Function to fetch user data from MongoDB with QR parsing
-const fetchUserData = async (qrData) => {
-  try {
-    console.log(`=== FETCHUSERDATA DEBUG ===`);
-    console.log(`Raw QR data: ${qrData}`);
-    
-    // Add explicit check for parseQRData function
-    if (typeof parseQRData !== 'function') {
-      console.error('parseQRData function is not available!');
-      throw new Error('parseQRData function is not defined');
-    }
-    
-    const parsed = parseQRData(qrData);
-    console.log(`Parsed result:`, parsed);
-    
-    // Use the parsed user ID instead of raw QR data
-    const userId = parsed.userId;
-    console.log(`Using User ID: ${userId}`);
-    console.log(`Full API URL: ${API_BASE_URL}/users/${userId}`);
-    
-    addDebugLog(`Fetching user data for ID: ${userId}`);
-    const response = await fetch(`${API_BASE_URL}/users/${userId}`);
-    
-    if (!response.ok) {
-      throw new Error(`User API call failed with status: ${response.status}`);
-    }
-    
-    const userData = await response.json();
-    addDebugLog(`User found: ${userData.name || userData.username}`);
-    return userData;
-  } catch (err) {
-    console.error(`=== FETCHUSERDATA ERROR ===`, err);
-    addDebugLog(`User fetch error: ${err.message}`, 'error');
-    throw err;
-  }
-};
-
-  // Function to fetch book data from MongoDB by ID
-  const fetchBookData = async (bookId) => {
+  const fetchUserData = async (qrData) => {
     try {
-      addDebugLog(`Fetching book data for ID: ${bookId}`);
-      const response = await fetch(`${API_BASE_URL}/books/details/${bookId}`);
+      console.log(`=== FETCHUSERDATA DEBUG ===`);
+      console.log(`Raw QR data: ${qrData}`);
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Book not found in database');
-        }
-        throw new Error(`Book API call failed with status: ${response.status}`);
+      if (typeof parseQRData !== 'function') {
+        console.error('parseQRData function is not available!');
+        throw new Error('parseQRData function is not defined');
       }
       
-      const bookData = await response.json();
-      addDebugLog(`Book found: ${bookData.name || bookData.title}`);
-      return bookData;
+      const parsed = parseQRData(qrData);
+      console.log(`Parsed result:`, parsed);
+      
+      const userId = parsed.userId;
+      console.log(`Using User ID: ${userId}`);
+      console.log(`Full API URL: ${API_BASE_URL}/users/${userId}`);
+      
+      addDebugLog(`Fetching user data for ID: ${userId}`);
+      const response = await fetch(`${API_BASE_URL}/users/${userId}`);
+      
+      if (!response.ok) {
+        throw new Error(`User API call failed with status: ${response.status}`);
+      }
+      
+      const userData = await response.json();
+      addDebugLog(`User found: ${userData.name || userData.username}`);
+      return userData;
     } catch (err) {
-      addDebugLog(`Book fetch error: ${err.message}`, 'error');
+      console.error(`=== FETCHUSERDATA ERROR ===`, err);
+      addDebugLog(`User fetch error: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -295,24 +270,17 @@ const fetchUserData = async (qrData) => {
     if (!data) return;
     setIsScanning(false); // Stop scanning after a successful read
     setIsLoading(true);
-    setInfo(`Processing ${scanMode === 'userQR' ? 'user' : 'book'}...`);
+    setInfo(`Processing user...`);
     addDebugLog(`QR code scanned: ${data}`);
 
     try {
-      if (scanMode === 'userQR') {
-        const userData = await fetchUserData(data);
-        const userName = userData.name || userData.username || 'Unknown User';
-        setScannedData(prev => ({ ...prev, user: userName }));
-        setInfo(`User '${userName}' scanned successfully.`);
-      } else if (scanMode === 'bookQR') {
-        const bookData = await fetchBookData(data);
-        const bookTitle = bookData.name || bookData.title || 'Unknown Book';
-        setScannedData(prev => ({ ...prev, book: bookTitle }));
-        setInfo(`Book '${bookTitle}' scanned successfully.`);
-      }
+      const userData = await fetchUserData(data);
+      const userName = userData.name || userData.username || 'Unknown User';
+      setScannedData(prev => ({ ...prev, user: userName }));
+      setInfo(`User '${userName}' scanned successfully. Now scan a book cover.`);
     } catch (err) {
       addDebugLog(`Scan processing error: ${err.message}`, 'error');
-      setError(err.message || `Failed to process ${scanMode === 'userQR' ? 'user' : 'book'}`);
+      setError(err.message || `Failed to process user`);
     } finally {
       setIsLoading(false);
       setScanMode(null); // Reset mode after scan
@@ -322,8 +290,8 @@ const fetchUserData = async (qrData) => {
   // Handles the book cover scan using Gemini API
   const handleBookCoverScan = async () => {
     if (!isScanning || !videoRef.current || !canvasRef.current) {
-        setError("Scanner not ready. Please start the scanner first.");
-        return;
+      setError("Scanner not ready. Please start the scanner first.");
+      return;
     }
     
     setIsLoading(true);
@@ -345,96 +313,95 @@ const fetchUserData = async (qrData) => {
     const prompt = "Identify the title of the book in this image. Respond with only the book title, nothing else.";
 
     const payload = {
-        contents: [
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
             {
-                role: "user",
-                parts: [
-                    { text: prompt },
-                    {
-                        inlineData: {
-                            mimeType: "image/png",
-                            data: base64ImageData
-                        }
-                    }
-                ]
+              inlineData: {
+                mimeType: "image/png",
+                data: base64ImageData
+              }
             }
-        ],
+          ]
+        }
+      ],
     };
 
     try {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
-            throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
-        }
+      if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+        throw new Error("Gemini API key is not configured. Please set NEXT_PUBLIC_GEMINI_API_KEY in your environment variables.");
+      }
 
-        // Fixed API URL format
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`;
+      
+      addDebugLog("Making Gemini API request...");
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      addDebugLog(`Gemini API response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog(`Gemini API error response: ${errorText}`, 'error');
+        throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
+      }
+
+      const result = await response.json();
+      addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
+      
+      const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (text) {
+        const bookTitle = text.trim();
+        setIdentifiedTitle(bookTitle);
+        addDebugLog(`Book title identified by AI: ${bookTitle}`);
         
-        addDebugLog("Making Gemini API request...");
-        
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-        });
-
-        addDebugLog(`Gemini API response status: ${response.status}`);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            addDebugLog(`Gemini API error response: ${errorText}`, 'error');
-            throw new Error(`Gemini API call failed with status: ${response.status}. ${errorText}`);
+        // Search for this book in your database with suggestions
+        try {
+          const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
+          
+          if (exactMatch) {
+            // Exact match found
+            const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
+            setScannedData(prev => ({ ...prev, book: finalBookTitle }));
+            setInfo(`Book '${finalBookTitle}' found in database!`);
+            addDebugLog(`Exact match found: ${finalBookTitle}`);
+            setShowSuggestions(false);
+          } else if (suggestions.length > 0) {
+            // Show suggestions
+            setBookSuggestions(suggestions);
+            setShowSuggestions(true);
+            setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
+            addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
+          } else {
+            // No matches found
+            setInfo(`Book '${bookTitle}' identified but not found in library database.`);
+            setShowSuggestions(false);
+            addDebugLog("No matches found in database");
+          }
+        } catch (searchErr) {
+          addDebugLog(`Database search error: ${searchErr.message}`, 'error');
+          setInfo(`Book '${bookTitle}' identified (database search failed)`);
+          setShowSuggestions(false);
         }
-
-        const result = await response.json();
-        addDebugLog(`Gemini API result: ${JSON.stringify(result)}`);
-        
-        const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (text) {
-            const bookTitle = text.trim();
-            setIdentifiedTitle(bookTitle);
-            addDebugLog(`Book title identified by AI: ${bookTitle}`);
-            
-            // Search for this book in your database with suggestions
-            try {
-              const { exactMatch, suggestions } = await searchBookWithSuggestions(bookTitle);
-              
-              if (exactMatch) {
-                // Exact match found
-                const finalBookTitle = exactMatch.name || exactMatch.title || bookTitle;
-                setScannedData(prev => ({ ...prev, book: finalBookTitle }));
-                setInfo(`Book '${finalBookTitle}' found in database!`);
-                addDebugLog(`Exact match found: ${finalBookTitle}`);
-                setShowSuggestions(false);
-              } else if (suggestions.length > 0) {
-                // Show suggestions
-                setBookSuggestions(suggestions);
-                setShowSuggestions(true);
-                setInfo(`Book identified as '${bookTitle}'. Found ${suggestions.length} similar books in database:`);
-                addDebugLog(`No exact match, showing ${suggestions.length} suggestions`);
-              } else {
-                // No matches found
-                setInfo(`Book '${bookTitle}' identified but not found in library database.`);
-                setShowSuggestions(false);
-                addDebugLog("No matches found in database");
-              }
-            } catch (searchErr) {
-              addDebugLog(`Database search error: ${searchErr.message}`, 'error');
-              setInfo(`Book '${bookTitle}' identified (database search failed)`);
-              setShowSuggestions(false);
-            }
-        } else {
-            throw new Error("Could not identify the book title from the image.");
-        }
+      } else {
+        throw new Error("Could not identify the book title from the image.");
+      }
     } catch (err) {
-        addDebugLog(`Gemini API error: ${err.message}`, 'error');
-        setError(err.message || "Failed to analyze book cover.");
+      addDebugLog(`Gemini API error: ${err.message}`, 'error');
+      setError(err.message || "Failed to analyze book cover.");
     } finally {
-        setIsLoading(false);
-        setScanMode(null);
-        stopCamera();
+      setIsLoading(false);
+      setScanMode(null);
+      stopCamera();
     }
   };
 
@@ -474,15 +441,15 @@ const fetchUserData = async (qrData) => {
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Only try to decode QR codes if in a QR mode
-    if (scanMode === 'userQR' || scanMode === 'bookQR') {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // Use window.jsQR as the library is loaded globally
-        const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
+    // Only try to decode QR codes if in userQR mode
+    if (scanMode === 'userQR') {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Use window.jsQR as the library is loaded globally
+      const qrCode = window.jsQR(imageData.data, imageData.width, imageData.height);
 
-        if (qrCode?.data) {
-            handleQrScan(qrCode.data);
-        }
+      if (qrCode?.data) {
+        handleQrScan(qrCode.data);
+      }
     }
 
     // Continue loop if still scanning
@@ -499,10 +466,11 @@ const fetchUserData = async (qrData) => {
     setScanMode(mode);
     setIsScanning(true);
     addDebugLog(`Starting scan mode: ${mode}`);
+    
     if (mode === 'bookCover') {
-        setInfo("Point the camera at the book cover and press 'Scan Cover'");
+      setInfo("Point the camera at the book cover and press 'Scan Cover'");
     } else {
-        setInfo(`Scanning for a ${mode === 'userQR' ? 'user' : 'book'} QR code...`);
+      setInfo(`Scanning for a user QR code...`);
     }
   };
 
@@ -525,9 +493,9 @@ const fetchUserData = async (qrData) => {
   // Effect to call the parent component's callback when both items are scanned
   useEffect(() => {
     if (scannedData.user && scannedData.book) {
-        onScanned(scannedData);
-        setInfo("User and Book successfully scanned! Ready to reset.");
-        addDebugLog("Both user and book scanned successfully");
+      onScanned(scannedData);
+      setInfo("User and Book successfully scanned! Ready to reset.");
+      addDebugLog("Both user and book scanned successfully");
     }
   }, [scannedData, onScanned]);
 
@@ -561,7 +529,7 @@ const fetchUserData = async (qrData) => {
               </button>
             </div>
           )}
-           {isScanning && scanMode !== 'bookCover' && (
+           {isScanning && scanMode === 'userQR' && (
                 <div className="absolute inset-0 border-8 border-white/20 rounded-lg animate-pulse"></div>
             )}
         </div>
@@ -629,22 +597,14 @@ const fetchUserData = async (qrData) => {
         )}
 
         {/* --- Scan Controls --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button
             onClick={() => startScanMode('userQR')}
             disabled={isScanning || isLoading || !isJsqrLoaded}
             className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            <span>Scan User</span>
-          </button>
-          <button
-            onClick={() => startScanMode('bookQR')}
-            disabled={isScanning || isLoading || !isJsqrLoaded}
-            className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-            <span>Scan Book QR</span>
+            <span>Scan User QR</span>
           </button>
           <button
             onClick={() => startScanMode('bookCover')}
@@ -652,7 +612,7 @@ const fetchUserData = async (qrData) => {
             className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-400 transition-all flex items-center justify-center space-x-2"
           >
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-            <span>Scan Cover</span>
+            <span>Scan Book Cover</span>
           </button>
         </div>
         
@@ -684,7 +644,7 @@ const fetchUserData = async (qrData) => {
               onClick={resetScanner}
               className="w-full px-6 py-3 mt-4 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 hover:border-gray-400 transition-colors"
             >
-              Reset
+              Reset Scanner
             </button>
         </div>
       </div>
