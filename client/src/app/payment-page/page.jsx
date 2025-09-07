@@ -9,575 +9,606 @@ import { useUser } from "../Hooks/useUser";
 
 function PaymentPage() {
   const searchParams = useSearchParams();
-  const planTier = searchParams.get("plan");
-  
-  // State management
+  const planTier = searchParams.get("plan") || "standard";
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(null);
   const [depositPaid, setDepositPaid] = useState(false);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponMessage, setCouponMessage] = useState("");
-  const [validCoupon, setValidCoupon] = useState(null);
-  const [debugMode] = useState(process.env.NODE_ENV === 'development');
-
-  // Hooks
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [isCodeApplied, setIsCodeApplied] = useState(false);
+  const [paymentConfig, setPaymentConfig] = useState(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [subscriptionDetails, setSubscriptionDetails] = useState(null);
+  const [couponDetails, setCouponDetails] = useState(null);
+  
   const { data: user, loading: userLoading, refetch: refetchUser } = useUser();
   const { refreshToken } = useAuth();
 
-  // Constants
-  const DEPOSIT_FEE = 299;
-  const PLAN_FEE = 49;
+  useEffect(() => {
+    if (user) {
+      setDepositPaid(user.deposit_status === "deposited");
+      fetchSubscriptionDetails();
+    }
+  }, [user]);
 
-  // Debug logging function
-  const debugLog = (message, data = {}) => {
-    if (debugMode) {
-      console.log(`[PAYMENT DEBUG] ${message}`, data);
+  // Fetch subscription details
+  const fetchSubscriptionDetails = async () => {
+    try {
+      let token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/subscription-details`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.status === 401) {
+        token = await refreshToken();
+        if (!token) return;
+        localStorage.setItem("token", token);
+        
+        const retryResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/users/subscription-details`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (retryResponse.ok) {
+          const data = await retryResponse.json();
+          setSubscriptionDetails(data);
+        }
+      } else if (response.ok) {
+        const data = await response.json();
+        setSubscriptionDetails(data);
+      }
+    } catch (err) {
+      console.error("Error fetching subscription details:", err);
     }
   };
 
-  // Initialize component state
+  // Fetch payment configuration from backend
   useEffect(() => {
-    debugLog('Component mounted', { planTier, user: user?.user_id });
-    
-    if (user) {
-      setDepositPaid(user.deposit_status === "deposited");
-      debugLog('User state updated', { 
-        depositStatus: user.deposit_status, 
-        subscriptionType: user.subscription_type 
-      });
-    }
-  }, [user, debugMode]);
+    const fetchPaymentConfig = async () => {
+      try {
+        let token = localStorage.getItem("token");
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/users/payment-config`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
-  // Razorpay script loader
+        if (response.status === 401) {
+          token = await refreshToken();
+          if (!token) {
+            setError("Please log in to continue.");
+            return;
+          }
+          localStorage.setItem("token", token);
+          const retryResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/users/payment-config`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (!retryResponse.ok) throw new Error("Failed to fetch payment config");
+          const config = await retryResponse.json();
+          setPaymentConfig(config);
+        } else {
+          if (!response.ok) throw new Error("Failed to fetch payment config");
+          const config = await response.json();
+          setPaymentConfig(config);
+        }
+      } catch (err) {
+        console.error("Error fetching payment config:", err);
+        setError("Failed to load payment configuration");
+      }
+    };
+
+    fetchPaymentConfig();
+  }, [refreshToken]);
+
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
-      if (window.Razorpay) {
-        debugLog('Razorpay script already loaded');
-        resolve(true);
-        return;
-      }
-      
-      debugLog('Loading Razorpay script');
       const script = document.createElement("script");
       script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => {
-        debugLog('Razorpay script loaded successfully');
-        resolve(true);
-      };
-      script.onerror = () => {
-        debugLog('Razorpay script failed to load');
-        resolve(false);
-      };
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
       document.body.appendChild(script);
     });
   };
 
-  // Enhanced authenticated request handler
-  const makeAuthenticatedRequest = async (url, options = {}) => {
-    debugLog('Making authenticated request', { url, method: options.method });
-    
-    // Validate API URL
-    if (!process.env.NEXT_PUBLIC_API_URL) {
-      throw new Error("API URL not configured");
+  const showToast = (message, type = "info") => {
+    if (type === "error") {
+      setError(message);
+      setSuccess(null);
+    } else {
+      setSuccess(message);
+      setError(null);
     }
-
-    let token = localStorage.getItem("token");
-    if (!token) {
-      throw new Error("No authentication token found");
-    }
-    
-    const makeRequest = async (authToken) => {
-      const requestOptions = {
-        ...options,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-          ...options.headers,
-        },
-      };
-      
-      debugLog('Request details', {
-        url,
-        method: requestOptions.method,
-        hasBody: !!options.body,
-        tokenLength: authToken?.length || 0
-      });
-      
-      const response = await fetch(url, requestOptions);
-      debugLog('Response received', { 
-        status: response.status, 
-        ok: response.ok,
-        statusText: response.statusText 
-      });
-      
-      return response;
-    };
-
-    try {
-      let response = await makeRequest(token);
-
-      // Handle token refresh if needed
-      if (response.status === 401) {
-        debugLog('Token expired, attempting refresh');
-        
-        try {
-          token = await refreshToken();
-          if (!token) {
-            throw new Error("Failed to refresh token");
-          }
-          
-          localStorage.setItem("token", token);
-          debugLog('Token refreshed successfully');
-          response = await makeRequest(token);
-        } catch (refreshError) {
-          debugLog('Token refresh failed', { error: refreshError.message });
-          setError("Session expired. Please log in again.");
-          setTimeout(() => {
-            window.location.href = "/auth/signin";
-          }, 2000);
-          return null;
-        }
-      }
-
-      return response;
-    } catch (networkError) {
-      debugLog('Network error occurred', { error: networkError.message });
-      throw new Error(`Network error: ${networkError.message}`);
-    }
+    setTimeout(() => {
+      setError(null);
+      setSuccess(null);
+    }, 5000);
   };
 
-  // Parse API error response
-  const parseApiError = async (response) => {
-    let errorMessage = `Server error (${response.status})`;
-    
-    try {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        debugLog('API error data', errorData);
-        
-        if (errorData.error) {
-          errorMessage = errorData.error;
-        }
-        if (errorData.details) {
-          errorMessage += ` - ${errorData.details}`;
-        }
-        if (errorData.errors && Array.isArray(errorData.errors)) {
-          errorMessage += ` - ${errorData.errors.map(e => e.msg || e.message).join(', ')}`;
-        }
-      } else {
-        const textError = await response.text();
-        if (textError) {
-          errorMessage = textError;
-        }
-      }
-    } catch (parseError) {
-      debugLog('Failed to parse error response', { error: parseError.message });
-    }
-    
-    return errorMessage;
-  };
-
-  // Coupon validation handler
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      setCouponMessage("Please enter a coupon code");
+  const handleApplyCode = async () => {
+    if (!code.trim()) {
+      setMessage("Please enter a coupon code");
+      setIsCodeApplied(false);
       return;
     }
 
-    setLoading(true);
-    setCouponMessage("");
-    setValidCoupon(null);
+    setValidatingCoupon(true);
+    setMessage("");
+    setIsCodeApplied(false);
 
     try {
-      debugLog('Validating coupon', { code: couponCode.trim() });
-      
-      const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_API_URL}/payments/validate-coupon`,
+      let token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/validate-coupon`,
         {
           method: "POST",
-          body: JSON.stringify({ code: couponCode.trim().toUpperCase() }),
-        }
-      );
-
-      if (!response) return;
-
-      if (response.ok) {
-        const data = await response.json();
-        debugLog('Coupon validation successful', data);
-        
-        if (data.valid) {
-          setValidCoupon(data.coupon);
-          setCouponMessage(`Coupon applied! ${data.coupon.description}`);
-        } else {
-          setCouponMessage("Invalid coupon code");
-        }
-      } else {
-        const errorMessage = await parseApiError(response);
-        setCouponMessage(errorMessage);
-      }
-    } catch (err) {
-      debugLog('Coupon validation error', { error: err.message });
-      setCouponMessage("Error validating coupon. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Deposit payment handler
-  const handleDepositPayment = async () => {
-    setLoading(true);
-    setError(null);
-    
-    debugLog('Starting deposit payment', {
-      user: user?.user_id,
-      depositStatus: user?.deposit_status,
-      amount: DEPOSIT_FEE
-    });
-
-    try {
-      // Validation checks
-      if (!user) {
-        throw new Error("Please log in to proceed");
-      }
-
-      if (user.deposit_status === "deposited") {
-        throw new Error("Deposit already paid");
-      }
-
-      // Load Razorpay script
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error("Failed to load payment gateway");
-      }
-
-      // Create deposit order
-      debugLog('Creating deposit order');
-      const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_API_URL}/payments/create-deposit-order`,
-        {
-          method: "POST",
-          body: JSON.stringify({ amount: DEPOSIT_FEE }),
-        }
-      );
-
-      if (!response) return;
-
-      if (!response.ok) {
-        const errorMessage = await parseApiError(response);
-        throw new Error(errorMessage);
-      }
-
-      const orderData = await response.json();
-      debugLog('Deposit order created', { orderId: orderData.orderId });
-      
-      await initiateDepositPayment(orderData);
-
-    } catch (err) {
-      debugLog('Deposit payment error', { error: err.message });
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initialize Razorpay deposit payment
-  const initiateDepositPayment = async (orderData) => {
-    return new Promise((resolve, reject) => {
-      const options = {
-        key: orderData.key,
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: "TheBookShelves",
-        description: "Security Deposit - 100% Refundable",
-        order_id: orderData.orderId,
-        handler: async (response) => {
-          debugLog('Deposit payment successful', { paymentId: response.razorpay_payment_id });
-          await verifyDepositPayment(response);
-          resolve();
-        },
-        prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-          contact: user?.phone_number || "",
-        },
-        theme: {
-          color: "#1D4ED8",
-        },
-        modal: {
-          ondismiss: () => {
-            debugLog('Payment modal dismissed');
-            reject(new Error("Payment cancelled"));
-          }
-        }
-      };
-
-      const paymentObject = new window.Razorpay(options);
-      
-      paymentObject.on("payment.failed", (response) => {
-        debugLog('Payment failed', response.error);
-        reject(new Error(`Payment failed: ${response.error.description}`));
-      });
-      
-      paymentObject.open();
-    });
-  };
-
-  // Verify deposit payment
-  const verifyDepositPayment = async (razorpayResponse) => {
-    setLoading(true);
-    
-    try {
-      debugLog('Verifying deposit payment', { 
-        paymentId: razorpayResponse.razorpay_payment_id 
-      });
-      
-      const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_API_URL}/payments/verify-deposit-payment`,
-        {
-          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
-            razorpay_payment_id: razorpayResponse.razorpay_payment_id,
-            razorpay_order_id: razorpayResponse.razorpay_order_id,
-            razorpay_signature: razorpayResponse.razorpay_signature,
-            amount: DEPOSIT_FEE,
+            couponCode: code.trim(),
           }),
         }
       );
 
-      if (!response) return;
-
-      if (!response.ok) {
-        const errorMessage = await parseApiError(response);
-        throw new Error(errorMessage);
+      if (response.status === 401) {
+        token = await refreshToken();
+        if (!token) {
+          setError("Please log in again.");
+          return;
+        }
+        localStorage.setItem("token", token);
+        const retryResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/users/validate-coupon`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              couponCode: code.trim(),
+            }),
+          }
+        );
+        const data = await retryResponse.json();
+        handleCouponValidationResponse(retryResponse, data);
+      } else {
+        const data = await response.json();
+        handleCouponValidationResponse(response, data);
       }
-
-      const verifyData = await response.json();
-      debugLog('Deposit payment verified', verifyData);
-      
-      setDepositPaid(true);
-      await refetchUser();
-      
-      // Show success message
-      setError(null);
-      alert("Deposit payment successful!");
-
     } catch (err) {
-      debugLog('Deposit verification error', { error: err.message });
-      setError(`Verification failed: ${err.message}`);
+      console.error("Error validating coupon:", err);
+      setMessage("Error validating coupon code");
+      setIsCodeApplied(false);
     } finally {
-      setLoading(false);
+      setValidatingCoupon(false);
     }
   };
 
-  // Subscription setup handler
-  const handleSubscriptionSetup = async () => {
-    setLoading(true);
-    setError(null);
+  const handleCouponValidationResponse = (response, data) => {
+    if (response.ok && data.valid) {
+      setMessage(data.message);
+      setIsCodeApplied(true);
+      setCouponDetails({
+        code: code.trim(),
+        isNewUserCoupon: data.isNewUserCoupon,
+        discount: data.isNewUserCoupon ? "First month for ₹1" : "Valid coupon applied"
+      });
+    } else {
+      setMessage(data.message || "Invalid coupon code");
+      setIsCodeApplied(false);
+      setCouponDetails(null);
+    }
+  };
+
+  const handleDepositPayment = async () => {
+    if (isProcessingPayment) return;
     
-    debugLog('Starting subscription setup', {
-      user: user?.user_id,
-      tier: planTier,
-      validCoupon: validCoupon?.code
-    });
-
     try {
-      // Validation checks
-      if (!user || user.deposit_status !== "deposited") {
-        throw new Error("Please complete deposit payment first");
-      }
+      setIsProcessingPayment(true);
+      setError(null);
 
-      // Load Razorpay script
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        throw new Error("Failed to load payment gateway");
-      }
-
-      // Create subscription order
-      const requestBody = {
-        tier: planTier || "standard",
-        amount: PLAN_FEE,
-      };
-
-      if (validCoupon) {
-        requestBody.coupon_code = validCoupon.code;
-      }
-
-      debugLog('Creating subscription order', requestBody);
-      
-      const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_API_URL}/payments/create-subscription-order`,
-        {
-          method: "POST",
-          body: JSON.stringify(requestBody),
-        }
-      );
-
-      if (!response) return;
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMessage = data.error || "Failed to create subscription";
-        throw new Error(errorMessage);
-      }
-
-      // Handle free subscription case
-      if (data.message && data.message.includes('Free subscription')) {
-        debugLog('Free subscription activated', data);
-        await refetchUser();
-        alert(data.message);
-        window.location.href = "/profile";
+      if (!user) {
+        setError("Please log in to proceed.");
         return;
       }
 
-      debugLog('Subscription order created', { subscriptionId: data.subscriptionId });
-      await initiateSubscriptionPayment(data);
+      if (!paymentConfig) {
+        setError("Payment configuration not loaded.");
+        return;
+      }
 
-    } catch (err) {
-      debugLog('Subscription setup error', { error: err.message });
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      // Check if deposit already paid
+      if (user.deposit_status === "deposited") {
+        setError("Deposit already paid.");
+        return;
+      }
 
-  // Initialize Razorpay subscription payment
-  const initiateSubscriptionPayment = async (orderData) => {
-    return new Promise((resolve, reject) => {
-      const options = {
-        key: orderData.key,
-        subscription_id: orderData.subscriptionId,
-        name: "TheBookShelves",
-        description: `${(planTier || "standard").charAt(0).toUpperCase() + (planTier || "standard").slice(1)} Plan Subscription`,
-        handler: async (response) => {
-          debugLog('Subscription payment successful', { 
-            paymentId: response.razorpay_payment_id 
-          });
-          await verifySubscriptionPayment(response);
-          resolve();
-        },
-        prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-          contact: user?.phone_number || "",
-        },
-        theme: {
-          color: "#1D4ED8",
-        },
-        modal: {
-          ondismiss: () => {
-            debugLog('Subscription payment modal dismissed');
-            reject(new Error("Payment cancelled"));
-          }
-        }
-      };
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        setError("Failed to load Razorpay SDK. Please try again.");
+        return;
+      }
 
-      const paymentObject = new window.Razorpay(options);
-      
-      paymentObject.on("payment.failed", (response) => {
-        debugLog('Subscription payment failed', response.error);
-        reject(new Error(`Payment failed: ${response.error.description}`));
-      });
-      
-      paymentObject.open();
-    });
-  };
-
-  // Verify subscription payment
-  const verifySubscriptionPayment = async (razorpayResponse) => {
-    setLoading(true);
-    
-    try {
-      debugLog('Verifying subscription payment', {
-        paymentId: razorpayResponse.razorpay_payment_id
-      });
-      
-      const requestBody = {
-        razorpay_payment_id: razorpayResponse.razorpay_payment_id,
-        razorpay_subscription_id: razorpayResponse.razorpay_subscription_id,
-        razorpay_signature: razorpayResponse.razorpay_signature,
-        tier: planTier || "standard",
-        amount: getDiscountedAmount(),
-      };
-
-      const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_API_URL}/payments/verify-subscription-payment`,
+      let token = localStorage.getItem("token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/create-deposit`,
         {
           method: "POST",
-          body: JSON.stringify(requestBody),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
         }
       );
 
-      if (!response) return;
-
-      if (!response.ok) {
-        const errorMessage = await parseApiError(response);
-        throw new Error(errorMessage);
+      if (response.status === 401) {
+        token = await refreshToken();
+        if (!token) {
+          setError("Failed to refresh token. Please log in again.");
+          window.location.href = "/auth/signin";
+          return;
+        }
+        localStorage.setItem("token", token);
+        const retryResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/users/create-deposit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({}),
+          }
+        );
+        if (!retryResponse.ok) {
+          const errorData = await retryResponse.json();
+          throw new Error(errorData.error || "Failed to create deposit order");
+        }
+        const orderData = await retryResponse.json();
+        initiatePayment(orderData, "deposit");
+      } else {
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to create deposit order");
+        }
+        const orderData = await response.json();
+        initiatePayment(orderData, "deposit");
       }
-
-      const verifyData = await response.json();
-      debugLog('Subscription payment verified', verifyData);
-      
-      await refetchUser();
-      alert("Subscription activated successfully!");
-      window.location.href = "/profile";
-
     } catch (err) {
-      debugLog('Subscription verification error', { error: err.message });
-      setError(`Verification failed: ${err.message}`);
+      console.error("Error initiating deposit payment:", err.message);
+      setError(err.message);
     } finally {
-      setLoading(false);
+      setIsProcessingPayment(false);
     }
   };
 
-  // Calculate discounted amount
-  const getDiscountedAmount = () => {
-    if (!validCoupon) return PLAN_FEE;
+ const handleSubscriptionPayment = async () => {
+  if (isProcessingPayment) return;
+  
+  try {
+    setIsProcessingPayment(true);
+    setError(null);
+
+    if (!user || user.deposit_status !== "deposited") {
+      setError("Please pay the deposit first.");
+      return;
+    }
+
+    if (!paymentConfig) {
+      setError("Payment configuration not loaded.");
+      return;
+    }
+
+    // Check if user already has active subscription
+    if (subscriptionDetails?.activeSubscription && 
+        ['active', 'auto_setup_pending'].includes(subscriptionDetails.activeSubscription.subscription_status)) {
+      setError("You already have an active subscription.");
+      return;
+    }
+
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded) {
+      setError("Failed to load Razorpay SDK. Please try again.");
+      return;
+    }
+
+    let token = localStorage.getItem("token");
+    const requestBody = {
+      tier: planTier,
+    };
+
+    // Only include couponCode if it's applied
+    if (isCodeApplied && code.trim()) {
+      requestBody.couponCode = code.trim();
+    }
+
+    console.log('Sending subscription request:', requestBody);
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+
+    await handleSubscriptionResponse(response, requestBody);
+  } catch (err) {
+    console.error("Error initiating subscription payment:", err.message);
+    setError(err.message);
+  } finally {
+    setIsProcessingPayment(false);
+  }
+};
+
+const handleSubscriptionResponse = async (response, requestBody) => {
+  if (response.status === 401) {
+    const token = await refreshToken();
+    if (!token) {
+      setError("Failed to refresh token. Please log in again.");
+      window.location.href = "/auth/signin";
+      return;
+    }
+    localStorage.setItem("token", token);
     
-    if (validCoupon.discount_type === 'percentage') {
-      return Math.max(0, PLAN_FEE * (1 - validCoupon.discount_value / 100));
-    } else {
-      return Math.max(0, PLAN_FEE - validCoupon.discount_value);
+    const retryResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestBody),
+      }
+    );
+    if (!retryResponse.ok) {
+      const errorData = await retryResponse.json();
+      throw new Error(errorData.error || "Failed to create subscription after token refresh");
+    }
+    const orderData = await retryResponse.json();
+    console.log('Subscription order data (retry):', orderData);
+    initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
+  } else {
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Subscription creation failed:', errorData);
+      throw new Error(errorData.error || "Failed to create subscription");
+    }
+    const orderData = await response.json();
+    console.log('Subscription order data:', orderData);
+    initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
+  }
+};
+
+const initiatePayment = async (orderData, type) => {
+  console.log('Initiating payment with order data:', orderData, 'type:', type);
+  
+  if (!orderData.orderId) {
+    setError('Invalid order data received from server');
+    return;
+  }
+
+  const isAutoPay = type === "subscription";
+  const paymentDescription = isAutoPay 
+    ? `AutoPay Setup for ${planTier} Plan (First Month ₹${orderData.amount / 100})`
+    : type === "deposit" 
+    ? "Security Deposit"
+    : `${planTier} Plan Monthly Payment (₹${orderData.amount / 100})`;
+
+  const options = {
+    key: orderData.key,
+    amount: orderData.amount,
+    currency: orderData.currency,
+    name: "TheBookShelves Subscription",
+    description: paymentDescription,
+    order_id: type === "deposit" || type === "order" ? orderData.orderId : undefined,
+    subscription_id: type === "subscription" ? orderData.orderId : undefined,
+    handler: async (response) => {
+      try {
+        console.log('Razorpay handler response:', response);
+        await verifyPayment(response, type, orderData);
+      } catch (err) {
+        console.error(`Error in payment handler:`, err.message);
+        setError(err.message);
+      }
+    },
+    prefill: {
+      name: user?.name || "",
+      email: user?.email || "",
+      contact: user?.phone_number || "",
+    },
+    theme: {
+      color: "#1D4ED8",
+    },
+    modal: {
+      ondismiss: function() {
+        setIsProcessingPayment(false);
+      }
     }
   };
 
-  // Loading states
-  if (userLoading) {
+  console.log('Razorpay options:', options);
+  
+  const paymentObject = new window.Razorpay(options);
+  paymentObject.on("payment.failed", (response) => {
+    console.error('Payment failed:', response);
+    setError(`Payment failed: ${response.error.description}`);
+    setIsProcessingPayment(false);
+  });
+  paymentObject.open();
+};
+
+const verifyPayment = async (response, type, orderData) => {
+  let token = localStorage.getItem("token");
+  const endpoint = type === "deposit" ? "verify-deposit-payment" : "verify-subscription-payment";
+  const payload = {
+    razorpay_payment_id: response.razorpay_payment_id,
+    razorpay_signature: response.razorpay_signature,
+  };
+
+  if (type !== "deposit") {
+    payload.tier = planTier;
+    payload.useAutoPay = type === "subscription";
+    
+    // Only include couponCode if it was applied
+    if (isCodeApplied && code.trim()) {
+      payload.couponCode = code.trim();
+    }
+  }
+
+  if (type === "deposit") {
+    payload.razorpay_order_id = response.razorpay_order_id;
+  } else if (type === "order") {
+    payload.razorpay_order_id = response.razorpay_order_id;
+  } else if (type === "subscription") {
+    payload.razorpay_subscription_id = response.razorpay_subscription_id;
+  }
+
+  console.log('Verification payload:', payload);
+
+  const verifyResponse = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/users/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (verifyResponse.status === 401) {
+    token = await refreshToken();
+    if (!token) {
+      setError("Failed to refresh token. Please log in again.");
+      window.location.href = "/auth/signin";
+      return;
+    }
+    localStorage.setItem("token", token);
+    const retryVerifyResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/users/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!retryVerifyResponse.ok) {
+      const errorData = await retryVerifyResponse.json();
+      throw new Error(
+        errorData.error || `Failed to verify ${type} payment after token refresh`
+      );
+    }
+    const verifyData = await retryVerifyResponse.json();
+    handlePaymentSuccess(verifyData, type, orderData);
+  } else {
+    if (!verifyResponse.ok) {
+      const errorData = await verifyResponse.json();
+      console.error('Payment verification failed:', errorData);
+      throw new Error(errorData.error || `Failed to verify ${type} payment`);
+    }
+    const verifyData = await verifyResponse.json();
+    console.log('Payment verification success:', verifyData);
+    handlePaymentSuccess(verifyData, type, orderData);
+  }
+};
+
+const handlePaymentSuccess = (verifyData, type, orderData) => {
+  console.log('Payment success:', verifyData, type, orderData);
+  
+  showToast(verifyData.message, "success");
+  refetchUser();
+  fetchSubscriptionDetails();
+  
+  if (type === "deposit") {
+    setDepositPaid(true);
+    showToast("Deposit payment successful! You can now set up your subscription.", "success");
+  } else if (type === "subscription") {
+    // AutoPay subscription
+    setTimeout(() => {
+      const regularAmount = verifyData.regularAmount || 49;
+      showToast(`AutoPay activated! You paid ₹${verifyData.actualAmountPaid} for the first month. Regular billing of ₹${regularAmount}/month will start next month.`, "success");
+    }, 1000);
+  } else if (type === "order") {
+    // Regular one-time payment
+    setTimeout(() => {
+      showToast(`Payment successful! You've paid ₹${verifyData.actualAmountPaid} for this month's subscription.`, "success");
+    }, 1000);
+  }
+  
+  // Clear coupon after successful payment
+  if (isCodeApplied) {
+    clearCoupon();
+  }
+  
+  setTimeout(() => {
+    window.location.href = "/profile";
+  }, 3000);
+};
+
+  const clearCoupon = () => {
+    setCode("");
+    setMessage("");
+    setIsCodeApplied(false);
+    setCouponDetails(null);
+  };
+
+  if (userLoading || !paymentConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
-          <p className="text-text-light dark:text-text-dark">Loading user data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-text-light dark:text-text-dark">Loading payment configuration...</p>
         </div>
       </div>
     );
   }
 
-  if (!user && !userLoading) {
+  if (error && !paymentConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-text-light dark:text-text-dark mb-4">
-            Please Log In
-          </h2>
-          <p className="text-text-light dark:text-text-dark mb-6">
-            You need to be logged in to access the payment page.
-          </p>
-          <button
-            onClick={() => window.location.href = "/auth/signin"}
-            className="px-6 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg hover:opacity-90 transition-opacity"
+        <div className="text-center p-6">
+          <div className="text-red-500 mb-4 text-xl">⚠️ Error</div>
+          <p className="text-text-light dark:text-text-dark mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-primary-light dark:bg-primary-dark text-white px-6 py-2 rounded-md hover:opacity-80"
           >
-            Go to Login
+            Retry
           </button>
         </div>
       </div>
     );
   }
 
-  // Footer data
   const footerData = {
-    description: "Dive into a world where books and coffee create magic. At TheBookShelves, we're more than just a collection of paperbacks at your favorite cafes—our community thrives on the love for stories and the joy of shared experiences.",
+    description:
+      "Dive into a world where books and coffee create magic. At TheBookShelves, we're more than just a collection of paperbacks at your favorite cafés—our community thrives on the love for stories and the joy of shared experiences.",
     subtext: "Sip, read, and connect with us today!",
     linksLeft: [
       { href: "/how-it-works", text: "How it works ?" },
@@ -592,246 +623,455 @@ function PaymentPage() {
     ],
   };
 
+  const isSubscribed = user?.subscription_type !== "basic" && 
+                     subscriptionDetails?.activeSubscription?.subscription_status === 'active';
+  const isFreeTrialActive = user?.freeTrialUsed && user?.freeTrialEndDate && new Date(user.freeTrialEndDate) > new Date();
+  const hasActiveSubscription = subscriptionDetails?.activeSubscription && 
+                               ['active', 'auto_setup_pending'].includes(subscriptionDetails.activeSubscription.subscription_status);
+
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
       <Header />
-      
-      <main className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-        {/* Page Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-header font-bold mb-4">
+      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Header Section */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-header font-bold mb-4">
             Complete Your Subscription
           </h1>
-          <p className="text-text-light dark:text-text-dark max-w-2xl mx-auto">
-            Follow the two-step process to activate your {planTier || "standard"} plan.
+          <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            Follow the two-step process to activate your {planTier} plan.
           </p>
         </div>
-        
-        {/* Payment Form */}
+
+        {/* Progress Indicator */}
+        <div className="max-w-md mx-auto mb-8">
+          <div className="flex items-center">
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+              depositPaid ? 'bg-green-500' : 'bg-blue-500'
+            } text-white text-sm font-medium`}>
+              {depositPaid ? '✓' : '1'}
+            </div>
+            <div className={`flex-1 h-1 mx-4 ${depositPaid ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+              hasActiveSubscription ? 'bg-green-500' : depositPaid ? 'bg-blue-500' : 'bg-gray-300'
+            } text-white text-sm font-medium`}>
+              {hasActiveSubscription ? '✓' : '2'}
+            </div>
+          </div>
+          <div className="flex justify-between mt-2 text-sm text-gray-600 dark:text-gray-400">
+            <span>Deposit</span>
+            <span>Subscription</span>
+          </div>
+        </div>
+
+        {/* Payment Cards */}
         <div className="flex justify-center">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-6 text-text-light dark:text-text-dark">
-              Payment Process
-            </h2>
-            
-            <div className="space-y-6">
-              {/* Step 1: Deposit */}
-              <div className="border border-border-light dark:border-border-dark p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold">
-                    1. Security Deposit
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg max-w-lg w-full overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Payment Setup
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Secure payment powered by Razorpay
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Current Subscription Status */}
+              {subscriptionDetails?.activeSubscription && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                    Current Subscription Status
                   </h3>
-                  <span className="text-lg font-bold text-primary-light dark:text-primary-dark">
-                    ₹{DEPOSIT_FEE}
-                  </span>
+                  <div className="text-sm text-blue-700 dark:text-blue-300">
+                    <p>Plan: <strong>{subscriptionDetails.activeSubscription.subscription_type}</strong></p>
+                    <p>Status: <strong>{subscriptionDetails.activeSubscription.subscription_status}</strong></p>
+                    <p>Valid until: <strong>{new Date(subscriptionDetails.activeSubscription.validity).toLocaleDateString()}</strong></p>
+                    {subscriptionDetails.activeSubscription.is_autopay && (
+                      <p className="text-green-600 dark:text-green-400 mt-1">✓ AutoPay Active</p>
+                    )}
+                  </div>
                 </div>
-                
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              )}
+
+              {/* Deposit Payment Section */}
+              <div className={`border-2 ${
+                depositPaid 
+                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                  : 'border-gray-200 dark:border-gray-700'
+              } rounded-lg p-6 transition-all duration-200`}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Step 1: Security Deposit
+                    </h3>
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
+                      ₹{paymentConfig.depositFee}
+                    </p>
+                  </div>
+                  {depositPaid && (
+                    <div className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-1 rounded-full text-sm font-medium">
+                      ✓ Paid
+                    </div>
+                  )}
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
                   This amount will be 100% refunded when your subscription ends
                 </p>
-                
                 <button
                   onClick={handleDepositPayment}
-                  disabled={depositPaid || loading}
-                  className={`w-full py-3 px-4 rounded-full font-medium transition-all duration-200 ${
+                  disabled={depositPaid || isProcessingPayment}
+                  className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
                     depositPaid
-                      ? "bg-green-500 text-white cursor-not-allowed"
-                      : loading
-                      ? "bg-gray-400 text-white cursor-not-allowed"
-                      : "bg-primary-light dark:bg-primary-dark text-white hover:opacity-90 transform hover:scale-105"
+                      ? "bg-green-500 text-white cursor-not-allowed opacity-75"
+                      : isProcessingPayment
+                      ? "bg-gray-400 text-white cursor-not-allowed opacity-75"
+                      : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl"
                   }`}
                 >
-                  {loading && !depositPaid ? (
+                  {isProcessingPayment ? (
                     <span className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Processing...
                     </span>
                   ) : depositPaid ? (
-                    "✓ Deposit Paid"
+                    "Payment Complete"
                   ) : (
                     "Pay Security Deposit"
                   )}
                 </button>
-                
-                <div className="mt-3 text-sm text-center">
-                  Status: {depositPaid ? (
-                    <span className="text-green-600 font-medium">✓ Completed</span>
-                  ) : (
-                    <span className="text-red-500">Pending</span>
-                  )}
-                </div>
               </div>
 
-              {/* Step 2: Subscription */}
-              <div className="border border-border-light dark:border-border-dark p-4 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold">
-                    2. Monthly Plan
-                  </h3>
-                  <span className="text-lg font-bold text-primary-light dark:text-primary-dark">
-                    ₹{validCoupon ? getDiscountedAmount() : PLAN_FEE}
-                  </span>
-                </div>
-                
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  {validCoupon && getDiscountedAmount() === 0
-                    ? "First month free with coupon!"
-                    : "Start your reading journey today!"}
-                </p>
-
-                {/* Coupon Code Section */}
-                <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <label className="block text-sm font-medium mb-2">
-                    Have a coupon code?
-                  </label>
-                  
-                  <div className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      placeholder="Enter coupon code"
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                      disabled={!depositPaid || loading}
-                    />
-                    <button
-                      onClick={handleApplyCoupon}
-                      disabled={!depositPaid || loading || !couponCode.trim()}
-                      className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                        !depositPaid || loading || !couponCode.trim()
-                          ? "bg-gray-300 dark:bg-gray-600 text-gray-500 cursor-not-allowed"
-                          : "bg-blue-500 hover:bg-blue-600 text-white"
-                      }`}
-                    >
-                      {loading ? "..." : "Apply"}
-                    </button>
+              {/* Subscription Setup Section */}
+              <div className={`border-2 ${
+                !depositPaid 
+                  ? 'border-gray-200 dark:border-gray-700 opacity-60' 
+                  : hasActiveSubscription 
+                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                  : 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              } rounded-lg p-6 transition-all duration-200`}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Step 2: Monthly Subscription
+                    </h3>
+                    <div className="mt-1">
+                      {isCodeApplied ? (
+                        <div className="space-y-1">
+                          <p className="text-2xl font-bold text-green-600">₹1 first month</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Regular price: <span className="line-through">₹{paymentConfig.planFee}</span>
+                          </p>
+                          <p className="text-xs text-green-600 font-medium">
+                            Then ₹{paymentConfig.planFee}/month from next month
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                          ₹{paymentConfig.planFee}/month
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  
-                  {couponMessage && (
-                    <div className={`text-sm mt-2 ${
-                      validCoupon ? "text-green-600" : "text-red-500"
-                    }`}>
-                      {couponMessage}
+                  {hasActiveSubscription && (
+                    <div className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-1 rounded-full text-sm font-medium">
+                      ✓ Active
                     </div>
                   )}
                 </div>
 
-                {/* Price Breakdown */}
-                {validCoupon && (
-                  <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-md">
-                    <div className="text-sm space-y-2">
-                      <div className="flex justify-between">
-                        <span>Original Price:</span>
-                        <span className="line-through text-gray-500">₹{PLAN_FEE}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Discount:</span>
-                        <span className="text-green-600">
-                          -{validCoupon.discount_type === 'percentage' 
-                            ? `${validCoupon.discount_value}%` 
-                            : `₹${validCoupon.discount_value}`}
-                        </span>
-                      </div>
-                      <div className="flex justify-between font-bold border-t pt-2 border-green-200 dark:border-green-700">
-                        <span>Final Price:</span>
-                        <span className="text-green-600">₹{getDiscountedAmount()}</span>
-                      </div>
+                <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
+                  {isCodeApplied
+                    ? "Pay just ₹1 for first month with coupon! Regular auto-pay (₹49/month) starts next month."
+                    : "Set up your monthly subscription payment"}
+                </p>
+
+                {/* Coupon Input - Only show if not subscribed */}
+                {!hasActiveSubscription && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Coupon Code (Optional)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.toUpperCase())}
+                        placeholder="Enter coupon code"
+                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                        disabled={!depositPaid || validatingCoupon}
+                      />
+                      <button
+                        onClick={handleApplyCode}
+                        disabled={!depositPaid || validatingCoupon || !code.trim()}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors duration-200 font-medium disabled:cursor-not-allowed"
+                      >
+                        {validatingCoupon ? "..." : "Apply"}
+                      </button>
                     </div>
+
+                    {/* Coupon Message */}
+                    {message && (
+                      <div className={`mt-2 p-3 rounded-lg text-sm ${
+                        isCodeApplied 
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700' 
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span>
+                            {isCodeApplied ? 
+                              `${message} Pay just ₹1 for first month!` : 
+                              message
+                            }
+                          </span>
+                          {isCodeApplied && (
+                            <button
+                              onClick={clearCoupon}
+                              className="ml-2 text-red-500 hover:text-red-700 font-medium"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Available Coupons Hint */}
+                    {!isCodeApplied && paymentConfig?.newUserCoupons && (
+                      <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded text-xs text-blue-600 dark:text-blue-400">
+                        New user? Try: {paymentConfig.newUserCoupons.join(', ')}
+                      </div>
+                    )}
                   </div>
                 )}
 
+                {/* Subscription Button */}
                 <button
-                  onClick={handleSubscriptionSetup}
-                  disabled={!depositPaid || loading}
-                  className={`w-full py-3 px-4 rounded-full font-medium transition-all duration-200 ${
+                  onClick={handleSubscriptionPayment}
+                  disabled={!depositPaid || isProcessingPayment || hasActiveSubscription}
+                  className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${
                     !depositPaid
-                      ? "bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                      : loading
-                      ? "bg-gray-400 text-white cursor-not-allowed"
-                      : "bg-primary-light dark:bg-primary-dark text-white hover:opacity-90 transform hover:scale-105"
+                      ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                      : hasActiveSubscription
+                      ? "bg-green-500 text-white cursor-not-allowed opacity-75"
+                      : isProcessingPayment
+                      ? "bg-gray-400 text-white cursor-not-allowed opacity-75"
+                      : isCodeApplied
+                      ? "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl"
+                      : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl"
                   }`}
                 >
-                  {loading ? (
+                  {isProcessingPayment ? (
                     <span className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                      Processing...
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Setting up...
                     </span>
+                  ) : hasActiveSubscription ? (
+                    `Subscribed (${subscriptionDetails?.activeSubscription?.subscription_type})`
                   ) : !depositPaid ? (
                     "Complete Deposit First"
-                  ) : validCoupon && getDiscountedAmount() === 0 ? (
-                    "Activate Free Subscription"
+                  ) : isCodeApplied ? (
+                    "Pay ₹1 & Setup Auto-Pay"
                   ) : (
-                    "Setup Monthly Subscription"
+                    "Pay ₹49 & Setup Subscription"
                   )}
                 </button>
 
-                <div className="mt-3 text-sm text-center">
-                  Status: {user?.subscription_type === (planTier || "standard") ? (
-                    <span className="text-green-600 font-medium">✓ Active</span>
-                  ) : (
-                    <span className="text-red-500">Not Active</span>
-                  )}
+                {/* Free Trial Info */}
+                {isFreeTrialActive && (
+                  <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                      Free trial active until: {new Date(user.freeTrialEndDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+
+                {/* Subscription Details */}
+                {subscriptionDetails?.activeSubscription && (
+                  <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Subscription Details</h4>
+                    <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                      <p>Amount Paid: ₹{subscriptionDetails.activeSubscription.amount}</p>
+                      <p>Valid Until: {new Date(subscriptionDetails.activeSubscription.validity).toLocaleDateString()}</p>
+                      {subscriptionDetails.activeSubscription.razorpay_subscription_id && (
+                        <p className="text-green-600 dark:text-green-400">AutoPay: Active</p>
+                      )}
+                      {subscriptionDetails.activeSubscription.couponCode && (
+                        <p>Coupon Used: {subscriptionDetails.activeSubscription.couponCode}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Security Info */}
+            <div className="px-6 pb-6">
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                <div className="flex items-center justify-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 mr-2">🔒</div>
+                    <span>SSL Secured</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 mr-2">💳</div>
+                    <span>Razorpay Protected</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 mr-2">✅</div>
+                    <span>100% Refundable</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Debug Information (Development only) */}
-        {debugMode && (
-          <div className="mt-8 max-w-md mx-auto">
-            <details className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-              <summary className="cursor-pointer font-medium">Debug Info</summary>
-              <div className="mt-2 text-sm space-y-1">
-                <div>API URL: {process.env.NEXT_PUBLIC_API_URL || 'Not set'}</div>
-                <div>User ID: {user?.user_id || 'Not found'}</div>
-                <div>Plan Tier: {planTier || 'Not specified'}</div>
-                <div>Deposit Status: {user?.deposit_status || 'Unknown'}</div>
-                <div>Subscription Type: {user?.subscription_type || 'None'}</div>
-                <div>Valid Coupon: {validCoupon?.code || 'None'}</div>
+        {/* Help Section */}
+        <div className="max-w-lg mx-auto mt-8 text-center">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Need help? Contact our support team
+          </p>
+          <div className="flex justify-center space-x-4 text-sm">
+            <a href="mailto:support@thebookshelves.com" className="text-blue-600 hover:text-blue-700">
+              Email Support
+            </a>
+            <span className="text-gray-300">•</span>
+            <a href="tel:+1234567890" className="text-blue-600 hover:text-blue-700">
+              Call Us
+            </a>
+          </div>
+        </div>
+
+        {/* Subscription History */}
+        {subscriptionDetails?.subscriptionHistory && subscriptionDetails.subscriptionHistory.length > 1 && (
+          <div className="max-w-4xl mx-auto mt-12">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Payment History</h3>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Plan
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Amount
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Validity
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {subscriptionDetails.subscriptionHistory.slice(0, 5).map((payment, index) => (
+                      <tr key={payment._id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {new Date(payment.transaction_date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {payment.subscription_type}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          ₹{payment.amount}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            payment.subscription_status === 'active' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                              : payment.subscription_status === 'cancelled'
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                          }`}>
+                            {payment.subscription_status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {new Date(payment.validity).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </details>
+            </div>
           </div>
         )}
-      </main>
-      
+      </div>
+
       <Footer
         description={footerData.description}
         subtext={footerData.subtext}
         linksLeft={footerData.linksLeft}
         linksRight={footerData.linksRight}
       />
-      
       <ThemeToggle />
-      
-      {/* Error Toast */}
+
+      {/* Toast Messages */}
       {error && (
-        <div className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg max-w-sm z-50">
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <h4 className="font-medium">Payment Error</h4>
-              <p className="text-sm mt-1">{error}</p>
+        <div className="fixed bottom-4 right-4 max-w-sm bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg z-50">
+          <div className="flex items-start">
+            <div className="flex-shrink-0 mr-2 mt-0.5">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
             </div>
-            <button 
+            <div className="flex-1">
+              <p className="text-sm font-medium">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+            <button
               onClick={() => setError(null)}
-              className="ml-2 text-white hover:text-gray-200 text-xl leading-none"
+              className="flex-shrink-0 ml-2 text-red-400 hover:text-red-600"
             >
-              ×
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
             </button>
           </div>
         </div>
       )}
-      
+
+      {success && (
+        <div className="fixed bottom-4 left-4 max-w-sm bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg z-50">
+          <div className="flex items-start">
+            <div className="flex-shrink-0 mr-2 mt-0.5">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Success</p>
+              <p className="text-sm">{success}</p>
+            </div>
+            <button
+              onClick={() => setSuccess(null)}
+              className="flex-shrink-0 ml-2 text-green-400 hover:text-green-600"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Loading Overlay */}
-      {loading && (
+      {isProcessingPayment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg text-center max-w-sm">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 text-center max-w-sm mx-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
               Processing Payment
             </h3>
             <p className="text-gray-600 dark:text-gray-400 text-sm">
-              Please do not close this window...
+              Please wait while we process your payment securely...
             </p>
           </div>
         </div>

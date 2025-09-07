@@ -10,12 +10,22 @@ function MainComponent() {
   const { data: user, loading, error: userError, refetch } = useUser();
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [showPhoneForm, setShowPhoneForm] = useState(false);
+  const [showProfileForm, setShowProfileForm] = useState(false);
   const [error, setError] = useState(null);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [profileData, setProfileData] = useState({
+    name: "",
+    gender: "",
+    state: "",
+    district: "",
+    pincode: ""
+  });
+  const [subscriptionDetails, setSubscriptionDetails] = useState(null);
   const [previousTransactions, setPreviousTransactions] = useState([]);
   const [pendingTransactions, setPendingTransactions] = useState([]);
   const [loadingTransactions, setLoadingTransactions] = useState(true);
+  const [loadingSubscription, setLoadingSubscription] = useState(true);
   const [showQR, setShowQR] = useState({});
   const [currentBook, setCurrentBook] = useState(null);
   const [loadingBook, setLoadingBook] = useState(true);
@@ -29,10 +39,47 @@ function MainComponent() {
       console.log("User book_id:", user?.book_id);
       setEmail(user.email || "");
       setPhone(user.phone_number || "");
+      setProfileData({
+        name: user.name || "",
+        gender: user.gender || "",
+        state: user.state || "",
+        district: user.district || "",
+        pincode: user.pincode || ""
+      });
       fetchTransactions();
       fetchCurrentBook();
+      fetchSubscriptionDetails();
     }
   }, [user, loading]);
+
+  const fetchSubscriptionDetails = async () => {
+    setLoadingSubscription(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found.");
+      }
+
+      // Fetch payment config for plan details
+      const configRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/payment-config`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (configRes.ok) {
+        const config = await configRes.json();
+        setSubscriptionDetails({
+          planFee: config.planFee,
+          depositFee: config.depositFee
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching subscription details:", err.message);
+    } finally {
+      setLoadingSubscription(false);
+    }
+  };
 
   const fetchTransactions = async () => {
     setLoadingTransactions(true);
@@ -239,6 +286,11 @@ function MainComponent() {
     return phoneRegex.test(phone);
   };
 
+  const validatePincode = (pincode) => {
+    const pincodeRegex = /^\d{6}$/;
+    return pincodeRegex.test(pincode);
+  };
+
   const handleUpdateEmail = async (e) => {
     e.preventDefault();
     try {
@@ -252,7 +304,7 @@ function MainComponent() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/users/update-user`,
+        `${process.env.NEXT_PUBLIC_API_URL}/users/update-profile`,
         {
           method: "PUT",
           headers: {
@@ -271,6 +323,7 @@ function MainComponent() {
       await refetch();
       setShowEmailForm(false);
       setError(null);
+      alert("Email updated successfully. Please check your email for verification.");
     } catch (err) {
       console.error("Error updating email:", err.message);
       setError(err.message);
@@ -290,7 +343,7 @@ function MainComponent() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/users/update-user`,
+        `${process.env.NEXT_PUBLIC_API_URL}/users/update-profile`,
         {
           method: "PUT",
           headers: {
@@ -309,8 +362,48 @@ function MainComponent() {
       await refetch();
       setShowPhoneForm(false);
       setError(null);
+      alert("Phone number updated successfully.");
     } catch (err) {
       console.error("Error updating phone number:", err.message);
+      setError(err.message);
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    try {
+      if (profileData.pincode && !validatePincode(profileData.pincode)) {
+        throw new Error("Pincode must be 6 digits");
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found. Please sign in.");
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/update-profile`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(profileData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || errorData.errors?.[0]?.msg || "Failed to update profile");
+      }
+
+      await refetch();
+      setShowProfileForm(false);
+      setError(null);
+      alert("Profile updated successfully.");
+    } catch (err) {
+      console.error("Error updating profile:", err.message);
       setError(err.message);
     }
   };
@@ -328,6 +421,40 @@ function MainComponent() {
       ...prev,
       [transactionId]: !prev[transactionId],
     }));
+  };
+
+  const getSubscriptionStatus = () => {
+    if (!user) return "No subscription";
+    
+    const now = new Date();
+    const validity = new Date(user.subscription_validity);
+    const isExpired = validity < now;
+    
+    if (user.subscription_type === 'basic' || isExpired) {
+      return "No active subscription";
+    }
+    
+    return `Active until ${validity.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}`;
+  };
+
+  const getSubscriptionPlanDetails = () => {
+    if (!user || !subscriptionDetails) return null;
+    
+    const subscriptionType = user.subscription_type?.toLowerCase();
+    if (subscriptionType === 'basic' || new Date(user.subscription_validity) < new Date()) {
+      return null;
+    }
+
+    return {
+      planName: subscriptionType?.toUpperCase(),
+      monthlyFee: subscriptionDetails.planFee,
+      depositAmount: subscriptionDetails.depositFee,
+      nextBilling: new Date(new Date(user.subscription_validity).getTime() + 30 * 24 * 60 * 60 * 1000)
+    };
   };
 
   if (loading) {
@@ -363,6 +490,8 @@ function MainComponent() {
       t.book_id.book_id === currentBook?.book_id &&
       t.status === "pickup_pending"
   );
+
+  const planDetails = getSubscriptionPlanDetails();
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark py-12 px-4 sm:px-6 lg:px-8">
@@ -402,36 +531,79 @@ function MainComponent() {
             Customer ID: {user.user_id}
           </p>
         </div>
-        <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
-          <div>
-            <h2 className="text-1xl sm:text-2xl  font-bold font-header text-text-light dark:text-text-dark capitalize">
-              {user.subscription_type?.toUpperCase() || "BASIC"} SUBSCRIPTION
-            </h2>
-            <p className="text-text-light dark:text-text-dark font-body">
-              Valid until{" "}
-              {user.subscription_validity
-                ? new Date(user.subscription_validity).toLocaleDateString(
-                    "en-US",
-                    {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    }
-                  )
-                : "Not set"}
-            </p>
-            <p className="text-text-light dark:text-text-dark font-body">
-              Deposit Status: {user.deposit_status}
-            </p>
-          </div>
-          <a
-            href="/Subscription"
-            className="inline-flex text-center items-center px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
-          >
-            Upgrade Subscription
-          </a>
+
+        {/* Enhanced Subscription Section */}
+        <div className="px-6 py-4 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
+  <div className="flex items-center justify-between mb-4">
+    <div>
+      <h2 className="text-1xl sm:text-2xl font-bold font-header text-text-light dark:text-text-dark capitalize">
+        {user.subscription_type?.toUpperCase() || "BASIC"} SUBSCRIPTION
+      </h2>
+      <p className="text-text-light dark:text-text-dark font-body">
+        {getSubscriptionStatus()}
+      </p>
+      <p className="text-text-light dark:text-text-dark font-body">
+        Deposit Status: {user.deposit_status}
+      </p>
+    </div>
+    {user.subscription_type !== 'basic' && user.subscription_validity && new Date(user.subscription_validity) > new Date() ? (
+      <div
+        role="status"
+        aria-label={`Subscribed until ${new Date(user.subscription_validity).toLocaleDateString("en-US")}`}
+        className="inline-flex text-center items-center px-6 py-2.5 bg-green-500 text-white font-button rounded-full hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 transition-colors"
+      >
+        Subscribed until {new Date(user.subscription_validity).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })}
+      </div>
+    ) : (
+      <a
+        href="/Subscription"
+        className="inline-flex text-center items-center px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+      >
+        Upgrade Subscription
+      </a>
+    )}
+  </div>
+
+  {/* Monthly Plan Details */}
+  {planDetails && !loadingSubscription && (
+    <div className="mt-4 p-4 bg-backgroundSCD-light dark:bg-backgroundSCD-dark rounded-lg">
+      <h3 className="text-lg font-semibold text-text-light dark:text-text-dark mb-2">
+        Monthly Plan Details
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <div>
+          <p className="text-text-light dark:text-text-dark font-body">
+            <strong>Plan:</strong> {planDetails.planName}
+          </p>
         </div>
+       წ
+
+        <div>
+          <p className="text-text-light dark:text-text-dark font-body">
+            <strong>Monthly Fee:</strong> ₹{planDetails.monthlyFee}
+          </p>
+        </div>
+        <div>
+          <p className="text-text-light dark:text-text-dark font-body">
+            <strong>Security Deposit:</strong> ₹{planDetails.depositAmount}
+          </p>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
+        {/* Profile Information Section */}
         <div className="space-y-4">
+          <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
+            Profile Information
+          </h2>
+          
+          {/* Email Field */}
           {showEmailForm ? (
             <form onSubmit={handleUpdateEmail} className="space-y-3">
               <input
@@ -461,10 +633,19 @@ function MainComponent() {
           ) : (
             <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
               <div className="font-body text-text-light dark:text-text-dark">
-                {user.email}
+                <strong>Email:</strong> {user.email}
+                {!user.isVerified && <span className="ml-2 text-warning-light dark:text-warning-dark">(Unverified)</span>}
               </div>
+              <button
+                onClick={() => setShowEmailForm(true)}
+                className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
+              >
+                Update Email
+              </button>
             </div>
           )}
+          
+          {/* Phone Field */}
           {showPhoneForm ? (
             <form onSubmit={handleUpdatePhone} className="space-y-3">
               <input
@@ -494,7 +675,7 @@ function MainComponent() {
           ) : (
             <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
               <div className="font-body text-text-light dark:text-text-dark">
-                {user.phone_number || "Not set"}
+                <strong>Phone:</strong> {user.phone_number || "Not set"}
               </div>
               <button
                 onClick={() => setShowPhoneForm(true)}
@@ -504,7 +685,91 @@ function MainComponent() {
               </button>
             </div>
           )}
+
+          {/* Additional Profile Fields */}
+          {showProfileForm ? (
+            <form onSubmit={handleUpdateProfile} className="space-y-3">
+              <input
+                type="text"
+                name="name"
+                value={profileData.name}
+                onChange={(e) => setProfileData({...profileData, name: e.target.value})}
+                className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
+                placeholder="Full Name"
+              />
+              <select
+                name="gender"
+                value={profileData.gender}
+                onChange={(e) => setProfileData({...profileData, gender: e.target.value})}
+                className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
+              >
+                <option value="">Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+              <input
+                type="text"
+                name="state"
+                value={profileData.state}
+                onChange={(e) => setProfileData({...profileData, state: e.target.value})}
+                className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
+                placeholder="State"
+              />
+              <input
+                type="text"
+                name="district"
+                value={profileData.district}
+                onChange={(e) => setProfileData({...profileData, district: e.target.value})}
+                className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
+                placeholder="District"
+              />
+              <input
+                type="text"
+                name="pincode"
+                value={profileData.pincode}
+                onChange={(e) => setProfileData({...profileData, pincode: e.target.value})}
+                className="w-full rounded-lg border border-border-light dark:border-border-dark px-4 py-2 font-body"
+                placeholder="Pincode (6 digits)"
+              />
+              <div className="flex space-x-2 justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark rounded-full font-button hover:bg-primary-light dark:hover:bg-primary-dark"
+                >
+                  Save Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileForm(false)}
+                  className="px-4 py-2 border text-text-light dark:text-text-dark border-border-light dark:border-border-dark rounded-full font-button hover:bg-backgroundSCD-light dark:hover:bg-backgroundSCD-dark"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-text-light dark:text-text-dark">Personal Details</h3>
+                <button
+                  onClick={() => setShowProfileForm(true)}
+                  className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
+                >
+                  Update Profile
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm font-body text-text-light dark:text-text-dark">
+                <p><strong>Gender:</strong> {user.gender || "Not set"}</p>
+                <p><strong>State:</strong> {user.state || "Not set"}</p>
+                <p><strong>District:</strong> {user.district || "Not set"}</p>
+                <p><strong>Pincode:</strong> {user.pincode || "Not set"}</p>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Current Book Section */}
         <div className="space-y-4">
           <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Current Book
@@ -514,8 +779,14 @@ function MainComponent() {
               Loading book...
             </div>
           ) : !currentBook ? (
-            <div className="px-6 py-3 text-center rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark shack-text-dark font-body">
-              No book currently borrowed.
+            <div className="px-6 py-4 text-center rounded-lg border border-border-light dark:border-border-dark text-text-light dark:text-text-dark font-body space-y-3">
+              <p>No book currently borrowed.</p>
+              <a
+                href="/discover"
+                className="inline-flex items-center px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-text-light dark:text-text-dark font-button rounded-full hover:bg-primary-light dark:hover:bg-primary-dark transition-colors"
+              >
+                Discover Books
+              </a>
             </div>
           ) : (
             <div className="flex items-center justify-between px-6 py-3 rounded-lg border border-border-light dark:border-border-dark hover:border-border-light dark:hover:border-border-dark transition-colors">
@@ -540,28 +811,38 @@ function MainComponent() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={isPickupPending ? () => setShowConfirmCancelPickup(true) : handleDropOff}
-                className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
-                disabled={pendingTransactions.some(
-                  (t) =>
-                    t.book_id.book_id === currentBook.book_id &&
-                    t.status === "dropoff_pending tij"
-                )}
-              >
-                {pendingTransactions.some(
-                  (t) =>
-                    t.book_id.book_id === currentBook.book_id &&
-                    t.status === "dropoff_pending"
-                )
-                  ? "Drop-off Pending"
-                  : isPickupPending
-                  ? "Cancel"
-                  : "Drop Off"}
-              </button>
+              <div className="flex space-x-2">
+                <a
+                  href="/discover"
+                  className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
+                >
+                  Discover More
+                </a>
+                <button
+                  onClick={isPickupPending ? () => setShowConfirmCancelPickup(true) : handleDropOff}
+                  className="px-4 py-2 text-primary-light dark:text-primary-dark rounded-full border border-primary-light dark:border-primary-dark hover:bg-primary-light dark:hover:bg-primary-dark transition-colors font-button"
+                  disabled={pendingTransactions.some(
+                    (t) =>
+                      t.book_id.book_id === currentBook.book_id &&
+                      t.status === "dropoff_pending"
+                  )}
+                >
+                  {pendingTransactions.some(
+                    (t) =>
+                      t.book_id.book_id === currentBook.book_id &&
+                      t.status === "dropoff_pending"
+                  )
+                    ? "Drop-off Pending"
+                    : isPickupPending
+                    ? "Cancel"
+                    : "Drop Off"}
+                </button>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Previous Transactions Section */}
         <div className="space-y-4">
           <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Previous Transactions
@@ -607,6 +888,8 @@ function MainComponent() {
             ))
           )}
         </div>
+
+        {/* Pending Transactions Section */}
         <div className="space-y-4">
           <h2 className="text-2xl text-center font-bold font-header text-text-light dark:text-text-dark">
             Pending Transactions
@@ -660,6 +943,8 @@ function MainComponent() {
             </div>
           )}
         </div>
+
+        {/* QR Code Modal */}
         {Object.keys(showQR).some((key) => showQR[key]) && (
           <div
             className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
@@ -704,6 +989,8 @@ function MainComponent() {
             })}
           </div>
         )}
+
+        {/* Action Buttons */}
         <div className="flex justify-center mt-8 space-x-4">
           <button
             onClick={() => setShowConfirmCancel(true)}
@@ -729,6 +1016,8 @@ function MainComponent() {
             Log Out
           </a>
         </div>
+
+        {/* Confirmation Modals */}
         {showConfirmCancel && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg text-center">
@@ -753,6 +1042,7 @@ function MainComponent() {
             </div>
           </div>
         )}
+
         {showConfirmCancelPickup && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg text-center">
@@ -776,6 +1066,8 @@ function MainComponent() {
             </div>
           </div>
         )}
+
+        {/* Error Display */}
         {(userError || error) && (
           <div className="fixed bottom-4 right-4 bg-warning-light dark:bg-warning-dark text-text-light dark:text-text-dark p-3 rounded-lg font-body">
             {userError || error}

@@ -14,8 +14,8 @@ const cafePortalRoutes = require('./routes/cafePortal');
 const clientPortalRoutes = require('./routes/clientPortal');
 const adminPortalRoutes = require('./routes/adminPortal');
 const importRoutes = require('./routes/import');
-const paymentRoutes = require('./routes/payments');
-const webhookRoutes = require('./routes/webhooks');
+// const paymentRoutes = require('./routes/payments');
+// const webhookRoutes = require('./routes/webhooks');
 const cookieParser = require('cookie-parser');
 
 // Create uploads directory if it doesn't exist
@@ -50,7 +50,7 @@ const app = express();
 app.use(cookieParser());
 
 // IMPORTANT: Webhook routes with raw body parser MUST come BEFORE express.json()
-app.use('/api/webhooks/razorpay', express.raw({type: 'application/json'}), webhookRoutes);
+// app.use('/api/webhooks/razorpay', express.raw({type: 'application/json'}), webhookRoutes);
 
 // Configure CORS
 const corsOptions = {
@@ -112,7 +112,7 @@ app.use('/api/cafe', checkDatabaseConnection, cafePortalRoutes);
 app.use('/api/client', checkDatabaseConnection, clientPortalRoutes);
 app.use('/api/admin', checkDatabaseConnection, adminPortalRoutes);
 app.use('/api/import', checkDatabaseConnection, importRoutes);
-app.use('/api/payments', checkDatabaseConnection, paymentRoutes);
+
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -174,17 +174,17 @@ const connectDB = async () => {
         // Start keep-alive mechanism
         startKeepAlive();
         
-        // Initialize coupon codes only once when first connected
-        if (!global.couponsInitialized) {
-            try {
-                const initCoupons = require('./initCoupons');
-                await initCoupons();
-                console.log('✅ Coupon codes initialized');
-                global.couponsInitialized = true;
-            } catch (error) {
-                console.error('❌ Error initializing coupons:', error.message);
-            }
-        }
+        // // Initialize coupon codes only once when first connected
+        // if (!global.couponsInitialized) {
+        //     try {
+        //         const initCoupons = require('./initCoupons');
+        //         await initCoupons();
+        //         console.log('✅ Coupon codes initialized');
+        //         global.couponsInitialized = true;
+        //     } catch (error) {
+        //         console.error('❌ Error initializing coupons:', error.message);
+        //     }
+        // }
         
     } catch (error) {
         console.error('❌ MongoDB connection error:', error.message);

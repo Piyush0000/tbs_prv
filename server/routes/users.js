@@ -13,6 +13,11 @@ const otpGenerator = require('otp-generator');
 
 require('dotenv').config();
 
+// Payment constants - defined in backend for security
+const DEPOSIT_FEE = 29900; // ₹299 in paise
+const PLAN_FEE = 4900; // ₹49 in paise
+const NEW_USER_COUPONS = ["DINKY100", "KAVYA100", "LEO100", "KASIS100"];
+
 // Initialize Razorpay instance for payment processing
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -86,6 +91,589 @@ const sendOTPEmail = async (email, otp) => {
         return false;
     }
 };
+
+// GET /payment-config: Get payment configuration constants
+router.get('/payment-config', authMiddleware, async (req, res) => {
+    try {
+        res.status(200).json({
+            depositFee: DEPOSIT_FEE / 100, // Convert to rupees for frontend
+            planFee: PLAN_FEE / 100, // Convert to rupees for frontend
+            newUserCoupons: NEW_USER_COUPONS,
+            razorpayKeyId: process.env.RAZORPAY_KEY_ID
+        });
+    } catch (err) {
+        console.error('Error fetching payment config:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /validate-coupon: Validate coupon code before payment
+router.post('/validate-coupon', authMiddleware, [
+    body('couponCode').notEmpty().trim().withMessage('Coupon code is required')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+        const { couponCode } = req.body;
+        const user = await User.findById(req.userId);
+        
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Validate coupon using the user model method
+        const validation = user.canUseCoupon(couponCode);
+        
+        if (!validation.valid) {
+            return res.status(400).json({ 
+                valid: false, 
+                message: validation.reason 
+            });
+        }
+
+        // Check if it's a new user coupon
+        const isNewUserCoupon = NEW_USER_COUPONS.includes(couponCode);
+        
+        res.status(200).json({
+            valid: true,
+            isNewUserCoupon,
+            message: isNewUserCoupon ? 'Valid new user coupon - first month free!' : 'Valid coupon code'
+        });
+    } catch (err) {
+        console.error('Error validating coupon:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+// POST /create-deposit: Create a Razorpay order for deposit payment
+router.post('/create-deposit', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Verify amount on backend
+        if (req.body.amount && req.body.amount !== DEPOSIT_FEE / 100) {
+            return res.status(400).json({ error: 'Invalid deposit amount' });
+        }
+
+        const orderOptions = {
+            amount: DEPOSIT_FEE, // Use backend constant
+            currency: 'INR',
+            receipt: `deposit_receipt_${user.user_id}_${Date.now()}`,
+            notes: {
+                user_id: user.user_id,
+                type: 'deposit',
+            },
+        };
+
+        const order = await razorpay.orders.create(orderOptions);
+        console.log(`Razorpay deposit order created for user ${user.user_id}: ${order.id}`);
+
+        res.status(200).json({
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            key: process.env.RAZORPAY_KEY_ID,
+        });
+    } catch (err) {
+        console.error('Error creating deposit order:', err.message);
+        res.status(500).json({ error: `Failed to create deposit order: ${err.message}` });
+    }
+});
+
+// POST /create-subscription: Create a Razorpay subscription for the user
+// POST /create-subscription: Create a Razorpay subscription for the user
+// POST /create-subscription: Create payment order or subscription based on coupon
+router.post('/create-subscription', authMiddleware, [
+    body('tier').isIn(['basic', 'standard', 'premium']).withMessage('Invalid subscription tier'),
+    body('couponCode').optional().trim()
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        console.error('Validation errors:', errors.array());
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+        const { tier, couponCode } = req.body;
+        console.log('=== SUBSCRIPTION CREATION DEBUG START ===');
+        console.log('Request body:', req.body);
+        console.log('User ID:', req.userId);
+        
+        const user = await User.findById(req.userId);
+        if (!user) {
+            console.error('User not found:', req.userId);
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        console.log('User found:', {
+            user_id: user.user_id,
+            email: user.email,
+            deposit_status: user.deposit_status
+        });
+        
+        if (user.deposit_status !== 'deposited') {
+            console.error('Deposit not paid. Status:', user.deposit_status);
+            return res.status(400).json({ error: 'Deposit payment required first' });
+        }
+
+        let isCodeApplied = false;
+        let useAutoPay = false;
+        let paymentAmount = PLAN_FEE; // Default ₹49
+
+        // Validate coupon if provided
+        if (couponCode) {
+            console.log('Validating coupon:', couponCode);
+            const validation = user.canUseCoupon(couponCode);
+            console.log('Coupon validation result:', validation);
+            
+            if (!validation.valid) {
+                return res.status(400).json({ error: validation.reason });
+            }
+
+            // For new user coupons, use autopay with ₹1 first payment
+            if (NEW_USER_COUPONS.includes(couponCode)) {
+                isCodeApplied = true;
+                useAutoPay = true;
+                paymentAmount = 100; // ₹1 in paise for first month
+                console.log('Coupon applied - Using AutoPay with first month amount:', paymentAmount);
+            }
+        }
+
+        console.log('Payment decision:', {
+            isCodeApplied,
+            useAutoPay,
+            paymentAmount: paymentAmount / 100
+        });
+
+        // Check Razorpay configuration
+        if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+            throw new Error('Razorpay credentials not configured');
+        }
+
+        if (!razorpay) {
+            throw new Error('Razorpay instance not initialized');
+        }
+
+        if (useAutoPay) {
+            // CREATE SUBSCRIPTION (for coupon users)
+            console.log('=== CREATING AUTOPAY SUBSCRIPTION ===');
+            
+            // First create a plan
+            let planId;
+            const uniquePlanName = `plan_${tier}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            try {
+                console.log('Creating plan with name:', uniquePlanName);
+                const planResponse = await razorpay.plans.create({
+                    period: 'monthly',
+                    interval: 1,
+                    item: {
+                        name: uniquePlanName,
+                        amount: PLAN_FEE, // Regular ₹49 for ongoing payments
+                        currency: 'INR',
+                        description: `${tier} monthly subscription`
+                    }
+                });
+                
+                planId = planResponse.id;
+                console.log('Plan created successfully:', planId);
+                
+            } catch (planErr) {
+                console.error('Plan creation failed:', planErr);
+                // Try a simpler approach - create plan without complex naming
+                try {
+                    const simplePlanResponse = await razorpay.plans.create({
+                        period: 'monthly',
+                        interval: 1,
+                        item: {
+                            name: `Monthly Plan ${Math.random().toString(36).substr(2, 5)}`,
+                            amount: PLAN_FEE,
+                            currency: 'INR'
+                        }
+                    });
+                    planId = simplePlanResponse.id;
+                    console.log('Simple plan created:', planId);
+                } catch (simplePlanErr) {
+                    console.error('Simple plan creation also failed:', simplePlanErr);
+                    throw new Error(`Plan creation failed: ${simplePlanErr.error?.description || simplePlanErr.message}`);
+                }
+            }
+
+            // Create subscription
+            try {
+                const subscriptionOptions = {
+                    plan_id: planId,
+                    customer_notify: 1,
+                    total_count: 12,
+                    // Start subscription next month since first month is ₹1
+                    start_at: Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000),
+                    notes: {
+                        user_id: user.user_id,
+                        tier: tier,
+                        coupon: couponCode
+                    }
+                };
+
+                console.log('Creating subscription with options:', subscriptionOptions);
+                const subscription = await razorpay.subscriptions.create(subscriptionOptions);
+                console.log('Subscription created:', subscription.id);
+
+                res.status(200).json({
+                    orderId: subscription.id,
+                    amount: paymentAmount,
+                    currency: 'INR',
+                    key: process.env.RAZORPAY_KEY_ID,
+                    isCodeApplied: true,
+                    useAutoPay: true,
+                    message: 'Pay ₹1 now, ₹49/month autopay starts next month'
+                });
+
+            } catch (subErr) {
+                console.error('Subscription creation failed:', subErr);
+                throw new Error(`Subscription creation failed: ${subErr.error?.description || subErr.message}`);
+            }
+
+        } else {
+            // CREATE REGULAR ORDER (for non-coupon users)
+            console.log('=== CREATING REGULAR ORDER ===');
+            
+            try {
+                const orderOptions = {
+                    amount: PLAN_FEE, // ₹49
+                    currency: 'INR',
+                    receipt: `subscription_${user.user_id}_${Date.now()}`,
+                    notes: {
+                        user_id: user.user_id,
+                        tier: tier,
+                        type: 'subscription_monthly'
+                    }
+                };
+
+                console.log('Creating regular order:', orderOptions);
+                const order = await razorpay.orders.create(orderOptions);
+                console.log('Regular order created:', order.id);
+
+                res.status(200).json({
+                    orderId: order.id,
+                    amount: order.amount,
+                    currency: order.currency,
+                    key: process.env.RAZORPAY_KEY_ID,
+                    isCodeApplied: false,
+                    useAutoPay: false,
+                    message: 'One-time payment of ₹49'
+                });
+
+            } catch (orderErr) {
+                console.error('Order creation failed:', orderErr);
+                throw new Error(`Order creation failed: ${orderErr.error?.description || orderErr.message}`);
+            }
+        }
+
+    } catch (err) {
+        console.error('=== SUBSCRIPTION CREATION ERROR ===');
+        console.error('Error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /verify-deposit-payment: Verify and record a deposit payment
+router.post('/verify-deposit-payment', authMiddleware, async (req, res) => {
+    try {
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+        const body = razorpay_order_id + '|' + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            console.warn(`Deposit payment verification failed for order ${razorpay_order_id}`);
+            return res.status(400).json({ error: 'Payment verification failed' });
+        }
+
+        const user = await User.findById(req.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        user.deposit_status = 'deposited';
+        await user.save();
+
+        const subscriptionPayment = new SubscriptionPayment({
+            transaction_date: new Date(),
+            payment_id: razorpay_payment_id,
+            deposit_payment_id: razorpay_payment_id,
+            user_id: user.user_id,
+            user_email: user.email,
+            validity: new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000),
+            subscription_type: user.subscription_type,
+            amount: DEPOSIT_FEE / 100,
+            deposit_amount: DEPOSIT_FEE / 100,
+            isCodeApplied: false,
+            isActive: true,
+            subscription_status: 'deposit_paid',
+            deposit_status: 'deposited',
+        });
+        await subscriptionPayment.save();
+
+        console.log(`Deposit payment verified for user ${user.user_id}`);
+        res.status(200).json({ message: 'Deposit payment verified and updated successfully' });
+    } catch (err) {
+        console.error('Error verifying deposit payment:', err.message);
+        res.status(500).json({ error: `Failed to verify deposit payment: ${err.message}` });
+    }
+});
+
+// POST /verify-subscription-payment: Verify and record a subscription payment
+
+// POST /verify-subscription-payment: Verify both regular and subscription payments
+router.post('/verify-subscription-payment', authMiddleware, [
+    body('tier').isIn(['basic', 'standard', 'premium']).withMessage('Invalid subscription tier'),
+    body('couponCode').optional().trim(),
+    body('useAutoPay').optional().isBoolean()
+], async (req, res) => {
+    try {
+        const { 
+            razorpay_order_id, 
+            razorpay_payment_id, 
+            razorpay_signature,
+            razorpay_subscription_id,
+            tier, 
+            couponCode,
+            useAutoPay 
+        } = req.body;
+
+        console.log('=== PAYMENT VERIFICATION START ===');
+        console.log('Payment type:', useAutoPay ? 'AutoPay Subscription' : 'Regular Order');
+        console.log('Payment ID:', razorpay_payment_id);
+        console.log('Order/Subscription ID:', razorpay_order_id || razorpay_subscription_id);
+
+        // Verify signature based on payment type
+        let body, expectedSignature;
+        if (useAutoPay && razorpay_subscription_id) {
+            body = razorpay_payment_id + '|' + razorpay_subscription_id;
+        } else {
+            body = razorpay_order_id + '|' + razorpay_payment_id;
+        }
+
+        expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body)
+            .digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+            console.warn('Payment verification failed - signature mismatch');
+            return res.status(400).json({ error: 'Payment verification failed' });
+        }
+
+        const user = await User.findById(req.userId);
+        if (!user || user.deposit_status !== 'deposited') {
+            return res.status(400).json({ error: 'User not found or deposit not paid' });
+        }
+
+        let actualAmountPaid = PLAN_FEE / 100; // Default ₹49
+        let subscriptionDuration = 30; // Default 30 days
+
+        // Handle coupon application
+        if (couponCode && NEW_USER_COUPONS.includes(couponCode)) {
+            const validation = user.canUseCoupon(couponCode);
+            if (validation.valid) {
+                user.applyCoupon(couponCode, 'first_month_free');
+                actualAmountPaid = 1; // First month ₹1
+                
+                // Set free trial
+                user.freeTrialUsed = true;
+                user.freeTrialEndDate = new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000);
+            }
+        }
+
+        // Update user subscription
+        user.subscription_type = tier;
+        user.subscription_validity = new Date(new Date().getTime() + subscriptionDuration * 24 * 60 * 60 * 1000);
+        await user.save();
+
+        // Create/update subscription payment record
+        let subscriptionPayment = await SubscriptionPayment.findOne({
+            user_id: user.user_id,
+            isActive: true,
+        });
+
+        if (!subscriptionPayment) {
+            subscriptionPayment = new SubscriptionPayment({
+                user_id: user.user_id,
+                user_email: user.email,
+                deposit_amount: DEPOSIT_FEE / 100,
+                deposit_status: 'deposited',
+                isActive: true,
+            });
+        }
+
+        // Update payment details
+        subscriptionPayment.payment_id = razorpay_payment_id;
+        subscriptionPayment.subscription_type = tier;
+        subscriptionPayment.amount = actualAmountPaid;
+        subscriptionPayment.validity = user.subscription_validity;
+        subscriptionPayment.isCodeApplied = !!couponCode;
+        subscriptionPayment.couponCode = couponCode || '';
+        subscriptionPayment.subscription_status = 'active';
+        
+        if (useAutoPay && razorpay_subscription_id) {
+            subscriptionPayment.razorpay_subscription_id = razorpay_subscription_id;
+        }
+        
+        await subscriptionPayment.save();
+
+        console.log(`Payment verified for user ${user.user_id}: ${tier} plan, Amount: ₹${actualAmountPaid}`);
+
+        const responseMessage = couponCode 
+            ? `Subscription activated! Paid ₹${actualAmountPaid} for first month. ${useAutoPay ? 'Auto-pay will start next month.' : ''}` 
+            : `Subscription activated! Paid ₹${actualAmountPaid} for this month.`;
+
+        res.status(200).json({
+            message: responseMessage,
+            actualAmountPaid,
+            regularAmount: PLAN_FEE / 100,
+            subscriptionType: tier,
+            validity: user.subscription_validity,
+            autoPayActive: useAutoPay
+        });
+
+    } catch (err) {
+        console.error('Payment verification error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /cancel-subscription: Cancel the user's active subscription and process refund
+router.post('/cancel-subscription', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user) {
+            console.log('User not found for cancel-subscription:', req.userId);
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (!user.subscription_type || user.subscription_type === 'basic') {
+            console.log('No active subscription to cancel for user:', user.user_id);
+            return res.status(400).json({ error: 'No active subscription to cancel' });
+        }
+
+        const currentDate = new Date();
+        if (user.subscription_validity < currentDate) {
+            console.log('Subscription already expired for user:', user.user_id);
+            return res.status(400).json({ error: 'Subscription is already expired' });
+        }
+
+        // Check for dropoff_pending transactions
+        const dropoffPendingTransactions = await Transaction.find({
+            user_id: user._id,
+            status: 'dropoff_pending',
+        });
+        if (dropoffPendingTransactions.length > 0) {
+            console.log('User has dropoff_pending transactions:', user.user_id);
+            return res.status(400).json({
+                error: 'Please complete your book drop-off before canceling the subscription',
+            });
+        }
+
+        // Check if the user has a book
+        if (user.book_id) {
+            console.log('User has a book assigned:', user.book_id, 'user:', user.user_id);
+            return res.status(400).json({
+                error: 'Please drop off your current book before canceling the subscription',
+            });
+        }
+
+        // Find the active subscription payment
+        const subscriptionPayment = await SubscriptionPayment.findOne({
+            user_id: user.user_id,
+            isActive: true,
+        });
+        if (!subscriptionPayment) {
+            console.log('No active subscription payment found for user:', user.user_id);
+            return res.status(404).json({ error: 'No active subscription payment found' });
+        }
+
+        const canceledSubscriptionType = user.subscription_type;
+
+        // Cancel Razorpay subscription (auto-pay)
+        if (subscriptionPayment.razorpay_subscription_id) {
+            try {
+                await razorpay.subscriptions.cancel(subscriptionPayment.razorpay_subscription_id);
+                console.log('Razorpay subscription canceled:', subscriptionPayment.razorpay_subscription_id);
+            } catch (err) {
+                console.error('Failed to cancel Razorpay subscription:', err.message);
+                return res.status(500).json({ error: 'Failed to cancel auto-pay subscription' });
+            }
+        }
+
+        // Initiate refund for the deposit
+        if (subscriptionPayment.deposit_payment_id && subscriptionPayment.deposit_amount) {
+            try {
+                const refund = await razorpay.payments.refund(subscriptionPayment.deposit_payment_id, {
+                    amount: subscriptionPayment.deposit_amount * 100, // Convert to paise
+                    speed: 'normal',
+                });
+                subscriptionPayment.deposit_status = 'refunded';
+                user.deposit_status = 'refunded';
+                console.log('Deposit refund initiated:', refund.id, 'for payment:', subscriptionPayment.deposit_payment_id);
+            } catch (err) {
+                console.error('Failed to refund deposit:', err.message);
+                subscriptionPayment.deposit_status = 'deposited';
+                return res.status(500).json({ error: 'Failed to process deposit refund' });
+            }
+        }
+
+        // Cancel any pickup_pending transactions
+        const pickupPendingTransactions = await Transaction.find({
+            user_id: user._id,
+            status: 'pickup_pending',
+        });
+
+        for (const transaction of pickupPendingTransactions) {
+            // Make the book available again
+            const book = await Book.findById(transaction.book_id);
+            if (book) {
+                book.available = true;
+                book.updatedAt = new Date();
+                await book.save();
+            }
+            // Delete the transaction
+            await Transaction.deleteOne({ _id: transaction._id });
+            console.log('Canceled pickup_pending transaction:', transaction.transaction_id, 'for user:', user.user_id);
+        }
+
+        // Update subscription payment
+        subscriptionPayment.isActive = false;
+        subscriptionPayment.subscription_status = 'cancelled';
+        subscriptionPayment.cancelled_at = new Date();
+        await subscriptionPayment.save();
+
+        // Update user subscription details
+        user.subscription_type = 'basic';
+        user.subscription_validity = currentDate;
+        await user.save();
+
+        console.log(`Subscription cancelled for user ${user.user_id}: Plan ${canceledSubscriptionType}`);
+        res.status(200).json({ message: `Subscription (${canceledSubscriptionType}) cancelled and deposit refund initiated successfully` });
+    } catch (err) {
+        console.error('Error cancelling subscription:', err.message);
+        res.status(500).json({ error: `Failed to cancel subscription: ${err.message}` });
+    }
+});
+
+
+// Remaining routes from original file...
+// (Include all other routes like POST /, PUT /update-profile, etc.)
 
 // GET /profile: Fetch the authenticated user's profile
 router.get('/profile', authMiddleware, async (req, res) => {
@@ -356,492 +944,6 @@ router.delete('/:user_id', authMiddleware, adminMiddleware, async (req, res) => 
     } catch (err) {
         console.error('Error deleting user:', err.message);
         res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /create-deposit: Create a Razorpay order for deposit payment
-router.post('/create-deposit', authMiddleware, async (req, res) => {
-    try {
-        const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET,
-        });
-
-        const { amount } = req.body;
-        if (amount !== 299) {
-            return res.status(400).json({ error: 'Invalid deposit amount. Expected ₹299' });
-        }
-
-        const user = await User.findById(req.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        const orderOptions = {
-            amount: 29900, // ₹299 in paise
-            currency: 'INR',
-            receipt: `deposit_receipt_${user.user_id}_${Date.now()}`,
-            notes: {
-                user_id: user.user_id,
-                type: 'deposit',
-            },
-        };
-
-        const order = await razorpay.orders.create(orderOptions);
-        console.log(`Razorpay deposit order created for user ${user.user_id}: ${order.id}`);
-
-        res.status(200).json({
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            key: process.env.RAZORPAY_KEY_ID,
-        });
-    } catch (err) {
-        console.error('Error creating deposit order:', err.message);
-        res.status(500).json({ error: `Failed to create deposit order: ${err.message}` });
-    }
-});
-
-// POST /create-subscription: Create a Razorpay subscription for the user
-router.post('/create-subscription', authMiddleware, async (req, res) => {
-    try {
-        const { tier, amount, isCodeApplied } = req.body;
-        if (!['basic', 'standard', 'premium'].includes(tier)) {
-            return res.status(400).json({ error: 'Invalid subscription tier' });
-        }
-        if (amount !== 49) {
-            return res.status(400).json({ error: 'Invalid subscription amount. Expected ₹49' });
-        }
-
-        const user = await User.findById(req.userId);
-        if (!user || user.deposit_status !== 'deposited') {
-            return res.status(400).json({ error: 'Deposit payment required first' });
-        }
-
-        let planId;
-        try {
-            const planResponse = await razorpay.plans.create({
-                period: 'monthly',
-                interval: 1,
-                item: {
-                    name: 'Standard Plan Monthly',
-                    amount: 4900,
-                    currency: 'INR',
-                    description: 'Monthly subscription for Standard Plan',
-                },
-            });
-            planId = planResponse.id;
-            console.log(`Razorpay plan created: ${planId}`);
-        } catch (err) {
-            if (err.error && err.error.code === 'BAD_REQUEST_ERROR' && err.error.description.includes('already exists')) {
-                const plans = await razorpay.plans.all({
-                    period: 'monthly',
-                    amount: 4900,
-                });
-                const existingPlan = plans.items.find(p => p.item.amount === 4900 && p.period === 'monthly');
-                if (existingPlan) {
-                    planId = existingPlan.id;
-                    console.log(`Using existing Razorpay plan: ${planId}`);
-                } else {
-                    throw new Error('No matching plan found');
-                }
-            } else {
-                throw err;
-            }
-        }
-
-        const subscriptionOptions = {
-            plan_id: planId,
-            customer_notify: 1,
-            total_count: 12,
-            start_at: isCodeApplied ? Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000) : undefined,
-            notes: {
-                user_id: user.user_id,
-                tier: tier,
-                isCodeApplied: isCodeApplied.toString(),
-            },
-        };
-
-        const subscription = await razorpay.subscriptions.create(subscriptionOptions);
-        console.log(`Razorpay subscription created for user ${user.user_id}: ${subscription.id}`);
-
-        res.status(200).json({
-            orderId: subscription.id,
-            amount: 4900,
-            currency: 'INR',
-            key: process.env.RAZORPAY_KEY_ID,
-            subscriptionUrl: subscription.short_url,
-        });
-    } catch (err) {
-        console.error('Error creating Razorpay subscription:', err.message);
-        res.status(500).json({ error: `Failed to create subscription: ${err.message}` });
-    }
-});
-
-// POST /verify-deposit-payment: Verify and record a deposit payment
-router.post('/verify-deposit-payment', authMiddleware, async (req, res) => {
-    try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = req.body;
-
-        if (amount !== 299) {
-            return res.status(400).json({ error: 'Invalid deposit amount. Expected ₹299' });
-        }
-
-        const body = razorpay_order_id + '|' + razorpay_payment_id;
-        const expectedSignature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(body.toString())
-            .digest('hex');
-
-        if (expectedSignature !== razorpay_signature) {
-            console.warn(`Deposit payment verification failed for order ${razorpay_order_id}`);
-            return res.status(400).json({ error: 'Payment verification failed' });
-        }
-
-        const user = await User.findById(req.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        user.deposit_status = 'deposited';
-        await user.save();
-
-        const subscriptionPayment = new SubscriptionPayment({
-            transaction_date: new Date(),
-            payment_id: razorpay_payment_id,
-            deposit_payment_id: razorpay_payment_id,
-            user_id: user.user_id,
-            user_email: user.email,
-            validity: new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000),
-            subscription_type: user.subscription_type,
-            amount: amount,
-            deposit_amount: amount,
-            isCodeApplied: false,
-            isActive: true,
-            subscription_status: 'deposit_paid',
-            deposit_status: 'deposited',
-        });
-        await subscriptionPayment.save();
-
-        console.log(`Deposit payment verified for user ${user.user_id}`);
-        res.status(200).json({ message: 'Deposit payment verified and updated successfully' });
-    } catch (err) {
-        console.error('Error verifying deposit payment:', err.message);
-        res.status(500).json({ error: `Failed to verify deposit payment: ${err.message}` });
-    }
-});
-
-// POST /verify-subscription-payment: Verify and record a subscription payment
-router.post('/verify-subscription-payment', authMiddleware, async (req, res) => {
-    try {
-        const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature, tier, amount, isCodeApplied } = req.body;
-
-        if (!['basic', 'standard', 'premium'].includes(tier)) {
-            return res.status(400).json({ error: 'Invalid subscription tier' });
-        }
-
-        if (amount !== 49) {
-            return res.status(400).json({ error: 'Invalid subscription amount. Expected ₹49' });
-        }
-
-        const body = razorpay_payment_id + '|' + razorpay_subscription_id;
-        const expectedSignature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(body)
-            .digest('hex');
-
-        if (expectedSignature !== razorpay_signature) {
-            console.warn(`Subscription payment verification failed for subscription ${razorpay_subscription_id}`);
-            return res.status(400).json({ error: 'Payment verification failed' });
-        }
-
-        const user = await User.findById(req.userId);
-        if (!user || user.deposit_status !== 'deposited') {
-            return res.status(400).json({ error: 'Deposit payment required first' });
-        }
-
-        // Find the existing deposit payment record
-        let subscriptionPayment = await SubscriptionPayment.findOne({
-            user_id: user.user_id,
-            deposit_status: 'deposited',
-            isActive: true,
-        });
-
-        if (!subscriptionPayment) {
-            return res.status(404).json({ error: 'No active deposit payment found' });
-        }
-
-        user.subscription_type = tier;
-        user.subscription_validity = isCodeApplied 
-            ? new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000)
-            : new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000);
-        await user.save();
-
-        // Update the existing subscription payment record
-        subscriptionPayment.payment_id = razorpay_payment_id;
-        subscriptionPayment.razorpay_subscription_id = razorpay_subscription_id;
-        subscriptionPayment.validity = user.subscription_validity;
-        subscriptionPayment.subscription_type = tier;
-        subscriptionPayment.amount = isCodeApplied ? 0 : amount;
-        subscriptionPayment.isCodeApplied = isCodeApplied;
-        subscriptionPayment.subscription_status = 'active';
-        await subscriptionPayment.save();
-
-        console.log(`Subscription payment verified for user ${user.user_id}: Plan ${tier}, Coupon Applied: ${isCodeApplied}`);
-        res.status(200).json({ message: 'Subscription payment verified and updated successfully' });
-    } catch (err) {
-        console.error('Error verifying subscription payment:', err.message);
-        res.status(500).json({ error: `Failed to verify subscription payment: ${err.message}` });
-    }
-});
-
-// POST /webhook: Handle Razorpay webhook events for subscription updates
-router.post('/webhook', async (req, res) => {
-    try {
-        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-        const receivedSignature = req.headers['x-razorpay-signature'];
-        const payload = JSON.stringify(req.body);
-
-        const expectedSignature = crypto
-            .createHmac('sha256', webhookSecret)
-            .update(payload)
-            .digest('hex');
-
-        if (receivedSignature !== expectedSignature) {
-            console.warn('Webhook signature verification failed');
-            return res.status(400).json({ error: 'Invalid webhook signature' });
-        }
-
-        const event = req.body.event;
-        const payloadData = req.body.payload;
-
-        if (event === 'subscription.charged') {
-            const subscription = payloadData.subscription.entity;
-            const payment = payloadData.payment.entity;
-
-            const subscriptionPayment = await SubscriptionPayment.findOne({ razorpay_subscription_id: subscription.id });
-            if (!subscriptionPayment) {
-                return res.status(404).json({ error: 'Subscription payment not found' });
-            }
-
-            const user = await User.findOne({ user_id: subscriptionPayment.user_id });
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-
-            user.subscription_validity = new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000);
-            subscriptionPayment.validity = user.subscription_validity;
-            subscriptionPayment.payment_id = payment.id;
-            subscriptionPayment.transaction_date = new Date();
-            subscriptionPayment.amount = payment.amount / 100;
-            subscriptionPayment.subscription_status = 'active';
-
-            await user.save();
-            await subscriptionPayment.save();
-
-            console.log(`Subscription charged for user ${user.user_id}: ${subscription.id}`);
-        } else if (event === 'subscription.cancelled' || event === 'subscription.halted' || event === 'subscription.expired') {
-            const subscription = payloadData.subscription.entity;
-
-            const subscriptionPayment = await SubscriptionPayment.findOne({ razorpay_subscription_id: subscription.id });
-            if (!subscriptionPayment) {
-                return res.status(404).json({ error: 'Subscription payment not found' });
-            }
-
-            const user = await User.findOne({ user_id: subscriptionPayment.user_id });
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-
-            user.subscription_type = 'basic';
-            user.subscription_validity = new Date();
-            user.deposit_status = 'refunded';
-            subscriptionPayment.isActive = false;
-            subscriptionPayment.subscription_status = subscription.status;
-            subscriptionPayment.cancelled_at = new Date();
-
-            await user.save();
-            await subscriptionPayment.save();
-
-            console.log(`Subscription ${event} for user ${user.user_id}: ${subscription.id}`);
-        }
-
-        res.status(200).json({ status: 'ok' });
-    } catch (err) {
-        console.error('Error processing webhook:', err.message);
-        res.status(500).json({ error: 'Webhook processing failed' });
-    }
-});
-
-// POST /cancel-subscription: Cancel the user's active subscription and process refund
-router.post('/cancel-subscription', authMiddleware, async (req, res) => {
-    try {
-        const user = await User.findById(req.userId);
-        if (!user) {
-            console.log('User not found for cancel-subscription:', req.userId);
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        if (!user.subscription_type || user.subscription_type === 'basic') {
-            console.log('No active subscription to cancel for user:', user.user_id);
-            return res.status(400).json({ error: 'No active subscription to cancel' });
-        }
-
-        const currentDate = new Date();
-        if (user.subscription_validity < currentDate) {
-            console.log('Subscription already expired for user:', user.user_id);
-            return res.status(400).json({ error: 'Subscription is already expired' });
-        }
-
-        // Check for dropoff_pending transactions
-        const dropoffPendingTransactions = await Transaction.find({
-            user_id: user._id,
-            status: 'dropoff_pending',
-        });
-        if (dropoffPendingTransactions.length > 0) {
-            console.log('User has dropoff_pending transactions:', user.user_id);
-            return res.status(400).json({
-                error: 'Please complete your book drop-off before canceling the subscription',
-            });
-        }
-
-        // Check if the user has a book
-        if (user.book_id) {
-            console.log('User has a book assigned:', user.book_id, 'user:', user.user_id);
-            return res.status(400).json({
-                error: 'Please drop off your current book before canceling the subscription',
-            });
-        }
-
-        // Find the active subscription payment
-        const subscriptionPayment = await SubscriptionPayment.findOne({
-            user_id: user.user_id,
-            isActive: true,
-        });
-        if (!subscriptionPayment) {
-            console.log('No active subscription payment found for user:', user.user_id);
-            return res.status(404).json({ error: 'No active subscription payment found' });
-        }
-
-        const canceledSubscriptionType = user.subscription_type;
-
-        // Cancel Razorpay subscription (auto-pay)
-        if (subscriptionPayment.razorpay_subscription_id) {
-            try {
-                await razorpay.subscriptions.cancel(subscriptionPayment.razorpay_subscription_id);
-                console.log('Razorpay subscription canceled:', subscriptionPayment.razorpay_subscription_id);
-            } catch (err) {
-                console.error('Failed to cancel Razorpay subscription:', err.message);
-                return res.status(500).json({ error: 'Failed to cancel auto-pay subscription' });
-            }
-        }
-
-        // Initiate refund for the deposit
-        if (subscriptionPayment.deposit_payment_id && subscriptionPayment.deposit_amount) {
-            try {
-                const refund = await razorpay.payments.refund(subscriptionPayment.deposit_payment_id, {
-                    amount: subscriptionPayment.deposit_amount * 100, // Convert to paise
-                    speed: 'normal', // or 'optimum' for faster refunds
-                });
-                subscriptionPayment.deposit_status = 'refunded';
-                user.deposit_status = 'refunded';
-                console.log('Deposit refund initiated:', refund.id, 'for payment:', subscriptionPayment.deposit_payment_id);
-            } catch (err) {
-                console.error('Failed to refund deposit:', err.message);
-                subscriptionPayment.deposit_status = 'deposited';
-                return res.status(500).json({ error: 'Failed to process deposit refund' });
-            }
-        }
-
-        // Cancel any pickup_pending transactions
-        const pickupPendingTransactions = await Transaction.find({
-            user_id: user._id,
-            status: 'pickup_pending',
-        });
-
-        for (const transaction of pickupPendingTransactions) {
-            // Make the book available again
-            const book = await Book.findById(transaction.book_id);
-            if (book) {
-                book.available = true;
-                book.updatedAt = new Date();
-                await book.save();
-            }
-            // Delete the transaction
-            await Transaction.deleteOne({ _id: transaction._id });
-            console.log('Canceled pickup_pending transaction:', transaction.transaction_id, 'for user:', user.user_id);
-        }
-
-        // Update subscription payment
-        subscriptionPayment.isActive = false;
-        subscriptionPayment.subscription_status = 'cancelled';
-        subscriptionPayment.cancelled_at = new Date();
-        await subscriptionPayment.save();
-
-        // Update user subscription details
-        user.subscription_type = 'basic';
-        user.subscription_validity = currentDate;
-        await user.save();
-
-        console.log(`Subscription cancelled for user ${user.user_id}: Plan ${canceledSubscriptionType}`);
-        res.status(200).json({ message: `Subscription (${canceledSubscriptionType}) cancelled and deposit refund initiated successfully` });
-    } catch (err) {
-        console.error('Error cancelling subscription:', err.message);
-        res.status(500).json({ error: `Failed to cancel subscription: ${err.message}` });
-    }
-});
-
-// POST /migrate-subscription-data: Migrate subscription data between User and SubscriptionPayment models (admin only)
-router.post('/migrate-subscription-data', authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-        const users = await User.find();
-        for (const user of users) {
-            const subscriptionPayment = await SubscriptionPayment.findOne({ user_id: user.user_id }) || {};
-
-            if (!user.subscription_type && subscriptionPayment.subscription_type) {
-                user.subscription_type = subscriptionPayment.subscription_type;
-            }
-            if (!user.subscription_validity && subscriptionPayment.validity) {
-                user.subscription_validity = subscriptionPayment.validity;
-            }
-            if (!user.deposit_status && subscriptionPayment.deposit_status) {
-                user.deposit_status = subscriptionPayment.deposit_status;
-            }
-            await user.save();
-            console.log(`Migrated User data for ${user.user_id}`);
-
-            if (subscriptionPayment) {
-                if (!subscriptionPayment.subscription_type) {
-                    subscriptionPayment.subscription_type = user.subscription_type || 'basic';
-                }
-                if (!subscriptionPayment.validity) {
-                    subscriptionPayment.validity = user.subscription_validity || new Date();
-                }
-                if (!subscriptionPayment.deposit_status) {
-                    subscriptionPayment.deposit_status = user.deposit_status || 'n/a';
-                }
-                await subscriptionPayment.save();
-                console.log(`Migrated SubscriptionPayment data for ${user.user_id}`);
-            } else {
-                const newPayment = new SubscriptionPayment({
-                    user_id: user.user_id,
-                    user_email: user.email,
-                    subscription_type: user.subscription_type || 'basic',
-                    validity: user.subscription_validity || new Date(),
-                    deposit_status: user.deposit_status || 'n/a',
-                    isActive: user.subscription_type !== 'basic',
-                    subscription_status: user.subscription_type === 'basic' ? 'created' : 'active',
-                });
-                await newPayment.save();
-                console.log(`Created new SubscriptionPayment for ${user.user_id}`);
-            }
-        }
-
-        console.log('Migration completed for all users');
-        res.status(200).json({ message: 'Subscription data migration completed successfully' });
-    } catch (err) {
-        console.error('Error during migration:', err.message);
-        res.status(500).json({ error: `Migration failed: ${err.message}` });
     }
 });
 
