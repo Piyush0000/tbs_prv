@@ -2,249 +2,174 @@
 import Link from "next/link";
 import Footer from "../../components/footer";
 import Header from "../../components/header";
+import { useAuth } from '../Hooks/AuthContext';
 
 function AboutUsPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50">
-      <Header />
+  const { user, isLoggedIn, loading, logout } = useAuth();
 
-      {/* Hero Section with Real Image */}
-      <div className="relative py-24 overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="/about.jpg"
-            alt="Coffee culture"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-black/40"></div>
+  const handleLogout = async () => {
+    console.log('Logout initiated from header');
+    const success = await logout();
+    if (success) {
+      console.log('Logout successful, reloading page.');
+      window.location.reload();
+    } else {
+      console.error('Logout failed');
+    }
+  };
+
+  const handleSearch = (e) => {
+    console.log('Search query:', e.target.value);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
+          <p className="text-text-light dark:text-text-dark">Loading...</p>
         </div>
-        <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-10">
-          <div className="text-center">
-            <h1 className="text-6xl font-bold mb-8 text-white">About Us</h1>
-            <div className="max-w-4xl mx-auto bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl">
-              <blockquote className="text-3xl font-bold mb-6 text-[#c983c0] italic">
-                "Culture shouldn't be available only to those who can afford it."
-              </blockquote>
-              <p className="text-xl leading-relaxed text-gray-700">
-                That belief lies at the heart of The Bookshelves (TBS)—a café-based book exchange network created to bring the joy of reading back into everyday life.
-              </p>
-            </div>
-          </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Header 
+        user={user}
+        onSearch={handleSearch}
+        onLogout={handleLogout}
+      />
+
+      {/* Hero Section */}
+      <div className="bg-gradient-to-b from-gray-50 to-white py-20">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <h1 className="text-5xl font-bold text-gray-900 mb-6">About The Bookshelves</h1>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Making literature accessible through a café-based book exchange network that connects readers with culture in everyday spaces.
+          </p>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-16">
-        <div className="space-y-24">
-
-          {/* Our Story Section */}
-          <div className="flex flex-col md:flex-row items-center gap-10 md:gap-12">
-            <div className="md:w-1/2">
-              <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-[#c983c0]">
-                <h2 className="text-3xl font-bold mb-6 text-gray-800">Our Story</h2>
-                <p className="leading-relaxed mb-4 text-gray-700">
-                  The story of The Bookshelves begins not with a business plan, but with a friendship. In their very first year of college, Kavya Gupta, a quiet bibliophile with a passion for cultural accessibility, met Dinky Sheth, an energetic marketing enthusiast who believed every great idea deserves a great audience.
-                </p>
-                <p className="leading-relaxed mb-4 text-gray-700">
-                  Bonding over literature, late-night café visits, and a shared frustration with the high cost of books, the two began to dream of a world where reading wasn't a luxury, but a lifestyle.
-                </p>
-                <p className="leading-relaxed text-gray-700">
-                  After two years of ideation, experimentation, and late-night planning sessions, The Bookshelves emerged—not just as a service, but as a movement to make books accessible, affordable, and alive in the heart of the city.
-                </p>
-              </div>
-            </div>
-            <div className="md:w-1/2">
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-[#c983c0] to-purple-600 rounded-2xl blur opacity-30"></div>
-                <div className="relative bg-white p-2 rounded-2xl shadow-xl">
-                  <img
-                    src="/dinky.jpeg"
-                    alt="Kavya and Dinky - The founders of The Bookshelves"
-                    className="w-full h-[400px] object-cover rounded-xl"
-                  />
-                </div>
-              </div>
-            </div>
+      <div className="max-w-6xl mx-auto px-4 py-16">
+        
+        {/* Mission Statement */}
+        <div className="text-center mb-20">
+          <div className="bg-[#c983c0]/5 p-8 rounded-xl max-w-4xl mx-auto">
+            <blockquote className="text-2xl text-[#c983c0] font-semibold italic mb-4">
+              "Culture shouldn't be available only to those who can afford it."
+            </blockquote>
+            <p className="text-gray-700 text-lg">
+              This principle drives our mission to democratize access to literature through innovative community-based solutions.
+            </p>
           </div>
+        </div>
 
-          {/* What We Do Section */}
-          <div className="flex flex-col md:flex-row-reverse items-center gap-10 md:gap-12">
-            <div className="md:w-1/2">
-              <div className="p-6 bg-white rounded-2xl shadow-xl border-r-4 border-[#c983c0]">
-                <h2 className="text-3xl font-bold mb-6 text-gray-800">What We Do</h2>
-                <p className="leading-relaxed mb-4 text-gray-700">
-                  At The Bookshelves, we offer a subscription-based book exchange system hosted in partner cafés across Kolkata. For a nominal monthly fee and a refundable safety deposit, readers can borrow from a thoughtfully curated collection of books—while enjoying their favorite coffee spots.
-                </p>
-                <p className="leading-relaxed italic text-[#c983c0] font-medium">
-                  These aren't just books—they're shared experiences, literary companions, and quiet adventures waiting to be discovered.
-                </p>
-              </div>
-            </div>
-            <div className="md:w-1/2">
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-[#c983c0] to-purple-600 rounded-2xl blur opacity-30"></div>
-                <div className="relative bg-white p-2 rounded-2xl shadow-xl">
-                  <img
-                    src="/what-we-do.jpg"
-                    alt="Person reading in a cozy café setting"
-                    className="w-full h-[400px] object-cover rounded-xl"
-                  />
-                </div>
-              </div>
-            </div>
+        {/* What We Do */}
+        <div className="grid md:grid-cols-2 gap-16 items-center mb-20">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-6">What We Do</h2>
+            <p className="text-gray-700 mb-4">
+              We operate a subscription-based book exchange system in partner cafés across Kolkata. Members pay a nominal monthly fee plus a refundable deposit to access our curated collection.
+            </p>
+            <p className="text-gray-700">
+              Our model transforms cafés into literary hubs, creating spaces where books circulate freely and reading becomes a social experience.
+            </p>
           </div>
-
-          {/* The Road Ahead Section */}
-          <div className="flex flex-col md:flex-row items-center gap-10 md:gap-12">
-            <div className="md:w-1/2">
-              <div className="p-6 bg-white rounded-2xl shadow-xl border-l-4 border-[#c983c0]">
-                <h2 className="text-3xl font-bold mb-6 text-gray-800">The Road Ahead</h2>
-                <p className="leading-relaxed mb-6 text-gray-700">
-                  Our vision is to make every café corner a literary hub—where books circulate freely, ideas are exchanged openly, and a new reading culture blooms at the heart of urban life.
-                </p>
-                <p className="leading-relaxed mb-6 text-gray-700">As we grow, we aim to:</p>
-                <div className="grid grid-cols-1 gap-4 mb-6">
-                  {[
-                    "Expand to more cities",
-                    "Champion regional and local literature",
-                    "Partner deeply with independent cafés and cultural spaces",
-                  ].map((goal, index) => (
-                    <div key={index} className="flex items-center p-3 bg-purple-50 rounded-lg">
-                      <span className="text-[#c983c0] mr-3">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                      </span>
-                      <span className="text-gray-700">{goal}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="leading-relaxed text-gray-700 mb-2">Because everyone deserves access to culture.</p>
-                <p className="leading-relaxed italic text-[#c983c0] font-medium">
-                  And every story deserves to be read.
-                </p>
+          <div className="bg-gray-50 p-8 rounded-xl">
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-[#c983c0] rounded-full mr-4"></div>
+                <span className="text-gray-700">Curated book collections</span>
               </div>
-            </div>
-            <div className="md:w-1/2">
-              <div className="relative">
-                <div className="absolute -inset-1 bg-gradient-to-r from-[#c983c0] to-purple-600 rounded-2xl blur opacity-30"></div>
-                <div className="relative bg-white p-2 rounded-2xl shadow-xl">
-                  <img
-                    src="/road-ahead.jpeg"
-                    alt="Team collaboration and planning for the future"
-                    className="w-full h-[400px] object-cover rounded-xl"
-                  />
-                </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-[#c983c0] rounded-full mr-4"></div>
+                <span className="text-gray-700">Partner café network</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-[#c983c0] rounded-full mr-4"></div>
+                <span className="text-gray-700">Affordable access model</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-[#c983c0] rounded-full mr-4"></div>
+                <span className="text-gray-700">Community-driven experience</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Meet Our Team */}
-        <div className="my-24">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-800">Meet Our Team</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden transform hover:scale-105 transition-transform duration-300">
-              <div className="h-80 overflow-hidden">
-                <img src="/kavya.png" alt="Kavya Gupta - Founder" className="w-full h-full object-cover" />
+        {/* Founders */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">Our Founders</h2>
+          <div className="grid md:grid-cols-2 gap-12 max-w-4xl mx-auto">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+              <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden bg-gray-100">
+                <img src="/kavya.png" alt="Kavya Gupta" className="w-full h-full object-cover" />
               </div>
-              <div className="p-6">
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">Kavya Gupta</h3>
-                <p className="text-[#c983c0] font-semibold mb-3">Founder, The Bookshelves</p>
-                <p className="text-gray-700 leading-relaxed">
-                  A reader at heart, building bridges between culture and community.
-                </p>
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900 mb-1">Kavya Gupta</h3>
+                <p className="text-[#c983c0] font-medium mb-3">Founder</p>
+                <p className="text-gray-600">Passionate about cultural accessibility and community building through literature.</p>
               </div>
             </div>
-
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden transform hover:scale-105 transition-transform duration-300">
-              <div className="h-80 overflow-hidden">
-                <img
-                  src="/dinky.jpeg"
-                  alt="Dinky Sheth - Co-Founder"
-                  className="w-full h-full object-cover object-left"
-                />
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+              <div className="w-32 h-32 mx-auto mb-6 rounded-full overflow-hidden bg-gray-100">
+                <img src="/dinky.jpeg" alt="Dinky Sheth" className="w-full h-full object-cover" />
               </div>
-              <div className="p-6">
-                <h3 className="text-2xl font-bold text-gray-800 mb-2">Dinky Sheth</h3>
-                <p className="text-[#c983c0] font-semibold mb-3">Co-Founder, The Bookshelves</p>
-                <p className="text-gray-700 leading-relaxed">
-                  A storyteller and strategist, making literature accessible—one café at a time.
-                </p>
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-gray-900 mb-1">Dinky Sheth</h3>
+                <p className="text-[#c983c0] font-medium mb-3">Co-Founder</p>
+                <p className="text-gray-600">Marketing strategist focused on expanding literary access across urban communities.</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Stats Section */}
-        <div className="my-24">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-800">Our Impact</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Stats */}
+        <div className="mb-20">
+          <div className="grid md:grid-cols-3 gap-8">
             {[
-              { number: "2+", label: "Years of Operation" },
-              { number: "1000+", label: "Books in Circulation" },
-              { number: "10+", label: "Partner Cafés" },
+              { number: "2+", label: "Years Operating" },
+              { number: "1000+", label: "Books Available" },
+              { number: "10+", label: "Partner Locations" },
             ].map((stat, index) => (
-              <div
-                key={index}
-                className="bg-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-transform duration-300"
-              >
-                <div className="text-5xl font-bold text-[#c983c0] mb-2">{stat.number}</div>
+              <div key={index} className="text-center p-6 bg-gray-50 rounded-xl">
+                <div className="text-4xl font-bold text-[#c983c0] mb-2">{stat.number}</div>
                 <div className="text-gray-600">{stat.label}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Testimonials */}
-        <div className="my-24">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-800">What Our Community Says</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {[
-              {
-                quote: "The Bookshelves has completely changed how I discover new books. I love the community aspect!",
-                author: "Priya M., Member since 2022",
-              },
-              {
-                quote: "As a café owner, partnering with TBS has brought in new customers and created a wonderful atmosphere.",
-                author: "Rahul S., Blue Tokai Coffee",
-              },
-            ].map((testimonial, index) => (
-              <div key={index} className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-2xl shadow-lg">
-                <div className="text-[#c983c0] text-4xl font-serif mb-4">"</div>
-                <p className="text-gray-700 italic mb-4">{testimonial.quote}</p>
-                <p className="text-right text-gray-600 font-medium">— {testimonial.author}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* CTA */}
-        <div className="my-24 text-center">
-          <div className="bg-gradient-to-r from-[#c983c0] to-purple-600 p-12 rounded-3xl shadow-2xl">
-            <h2 className="text-4xl font-bold mb-4 text-white">Join Our Literary Community</h2>
-            <p className="mb-8 text-white text-lg">
-              Be part of a movement that's making culture accessible to everyone, one book at a time.
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#c983c0] to-purple-600 rounded-3xl"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-[#c983c0]/90 to-purple-600/90 rounded-3xl backdrop-blur-sm"></div>
+          <div className="relative p-16 text-center">
+            <div className="mb-6">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full backdrop-blur-sm mb-4">
+                <span className="text-4xl">🚀</span>
+              </div>
+            </div>
+            <h2 className="text-4xl font-bold mb-6 text-white">Join Our Literary Revolution</h2>
+            <p className="mb-10 text-white/90 text-xl max-w-2xl mx-auto leading-relaxed">
+              Experience affordable access to quality literature in your favorite café spaces. Be part of the movement making culture accessible to everyone.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-6 justify-center">
               <Link href="/Subscription">
-                <button className="bg-white text-[#c983c0] px-8 py-4 rounded-full text-lg font-semibold hover:bg-gray-100 transition shadow-lg">
-                  Start Reading Today
+                <button className="group relative bg-white text-[#c983c0] px-10 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 transition-all transform hover:scale-105 shadow-xl hover:shadow-2xl">
+                  <span className="relative z-10">Start Your Journey</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#c983c0]/10 to-purple-600/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </button>
               </Link>
-              <Link href="/contact">
-                <button className="bg-transparent text-white px-8 py-4 rounded-full text-lg font-semibold border-2 border-white hover:bg-white/10 transition shadow-lg">
-                  Get In Touch
+              <Link href="">
+                <button className="group relative bg-transparent text-white px-10 py-4 rounded-xl font-bold text-lg border-2 border-white hover:bg-white/10 transition-all transform hover:scale-105 shadow-xl">
+                  <span className="relative z-10 flex items-center">
+                    Get In Touch
+                    <svg className="ml-2 w-5 h-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                  </span>
                 </button>
               </Link>
             </div>

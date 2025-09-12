@@ -8,8 +8,10 @@ import Header from "../../components/header";
 import MustReadBook from "../../components/MustReadBook";
 import MustVisitCafe from "../../components/MustVisitCafe";
 import ThemeToggle from "../../components/ThemeToggle";
+import { useAuth } from '../Hooks/AuthContext'; // Import the useAuth hook
 
 function MainComponent() {
+  const { user, isLoggedIn, loading, logout } = useAuth();
   const [activeFilter, setActiveFilter] = useState(null);
   const [cafeFilters, setCafeFilters] = useState({ location: "", pricing: "" });
   const [bookFilters, setBookFilters] = useState({
@@ -41,6 +43,17 @@ function MainComponent() {
 
   const cafeFilterRef = useRef(null);
   const bookFilterRef = useRef(null);
+
+  const handleLogout = async () => {
+    console.log('Logout initiated from header');
+    const success = await logout();
+    if (success) {
+      console.log('Logout successful, reloading page.');
+      window.location.reload();
+    } else {
+      console.error('Logout failed');
+    }
+  };
 
   const handleFilterClick = (filterName) => {
     setActiveFilter(activeFilter === filterName ? null : filterName);
@@ -270,6 +283,18 @@ function MainComponent() {
     }
   }, []);
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
+          <p className="text-text-light dark:text-text-dark">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -281,9 +306,9 @@ function MainComponent() {
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
       <Header
-        location="New Town, Kolkata"
-        onLocationChange={() => {}}
+        user={user}
         onSearch={handleSearch}
+        onLogout={handleLogout}
       />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {!searchQuery && (

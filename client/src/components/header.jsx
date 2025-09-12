@@ -1,16 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 
-// The 'onLogout' prop is added to handle the logout action
+// The 'onLogout' prop is added to handle the logout action  
 function Header({ user, onSearch, onLogout }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
-  // Check if user is authenticated
-  const isAuthenticated = user && user.user_id;
+  // More robust authentication check
+  const isAuthenticated = user && (user.user_id || user.id) && user.email;
 
-  // Use standard <a> tags instead of Next.js <Link>
-  const Link = ({ href, children, ...props }) => <a href={href} {...props}>{children}</a>;
+  // Debug log to help troubleshoot authentication issues
+  useEffect(() => {
+    console.log('Header user state:', {
+      user: user,
+      isAuthenticated: isAuthenticated,
+      userId: user?.user_id || user?.id,
+      userEmail: user?.email
+    });
+  }, [user, isAuthenticated]);
 
   // Close user dropdown when clicking outside
   useEffect(() => {
@@ -72,7 +80,7 @@ function Header({ user, onSearch, onLogout }) {
             How it works?
           </Link>
           <Link
-            href="/about"
+            href="/AboutUs"
             className="text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark transition-colors font-medium"
           >
             About
@@ -94,10 +102,10 @@ function Header({ user, onSearch, onLogout }) {
                 {/* User Avatar */}
                 <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center">
                   <span className="text-xs font-semibold">
-                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </span>
                 </div>
-                <span>{user.name || 'User'}</span>
+                <span>{user?.name || 'User'}</span>
                 <svg 
                   className={`h-4 w-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} 
                   fill="none" 
@@ -112,9 +120,9 @@ function Header({ user, onSearch, onLogout }) {
                   {/* User Info Section */}
                   <div className="px-4 py-2 border-b border-border-light dark:border-border-dark">
                     <p className="font-medium text-text-light dark:text-text-dark text-sm">
-                      {user.name || 'User'}
+                      {user?.name || 'User'}
                     </p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
+                    <p className="text-xs text-gray-500">{user?.email}</p>
                   </div>
                   <Link 
                     href="/profile" 
@@ -123,17 +131,19 @@ function Header({ user, onSearch, onLogout }) {
                   >
                     Profile
                   </Link>
-                  <Link 
+                  {/* <Link 
                     href="/my-books" 
                     className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700"
                     onClick={() => setIsUserMenuOpen(false)}
                   >
                     My Books
-                  </Link>
+                  </Link> */}
                   <button 
                     onClick={() => {
                       setIsUserMenuOpen(false);
-                      onLogout();
+                      if (onLogout && typeof onLogout === 'function') {
+                        onLogout();
+                      }
                     }} 
                     className="w-full text-left block px-4 py-2 text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
@@ -186,7 +196,7 @@ function Header({ user, onSearch, onLogout }) {
               How it works?
             </Link>
             <Link 
-              href="/about" 
+              href="/AboutUs"
               className="py-2 text-text-light dark:text-text-dark hover:text-primary-light dark:hover:text-primary-dark"
               onClick={() => setIsMenuOpen(false)}
             >
@@ -208,11 +218,11 @@ function Header({ user, onSearch, onLogout }) {
                 <div className="text-center py-2 flex items-center space-x-2">
                   <div className="w-8 h-8 bg-primary-light dark:bg-primary-dark rounded-full flex items-center justify-center">
                     <span className="text-white text-sm font-semibold">
-                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                     </span>
                   </div>
                   <span className="font-medium text-text-light dark:text-text-dark">
-                    Hello, {user.name || 'User'}
+                    Hello, {user?.name || 'User'}
                   </span>
                 </div>
                 <Link 
@@ -232,7 +242,9 @@ function Header({ user, onSearch, onLogout }) {
                 <button 
                   onClick={() => {
                     setIsMenuOpen(false);
-                    onLogout();
+                    if (onLogout && typeof onLogout === 'function') {
+                      onLogout();
+                    }
                   }} 
                   className="py-2 text-red-500 hover:text-red-600"
                 >

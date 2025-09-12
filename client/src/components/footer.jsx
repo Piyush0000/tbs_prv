@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Facebook, Instagram, Linkedin, Phone } from "lucide-react";
 
 const Footer = () => {
   return (
@@ -34,8 +35,18 @@ const Footer = () => {
           </div>
           {/* Contact Info (desktop only) */}
           <div className="hidden sm:block sm:text-right sm:w-[45%]">
-            <div className="text-text-dark dark:text-text-light font-body text-base">
+            <div className="text-text-dark dark:text-text-light font-body text-base space-y-2">
               <p>Email: thbookshelves@gmail.com</p>
+              <div className="flex flex-col space-y-1">
+                <div className="flex items-center justify-end space-x-2">
+                  <Phone size={16} />
+                  <span>+91 93300 31459</span>
+                </div>
+                <div className="flex items-center justify-end space-x-2">
+                  <Phone size={16} />
+                  <span>+91 93309 06497</span>
+                </div>
+              </div>
             </div>
             <div className="flex space-x-4 mt-4 justify-end text-text-dark dark:text-text-light">
               <a
@@ -43,24 +54,27 @@ const Footer = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+                aria-label="Facebook"
               >
-                <span>FB</span>
+                <Facebook size={20} />
               </a>
               <a
                 href="https://www.instagram.com/th_bookshelves"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+                aria-label="Instagram"
               >
-                <span>IG</span>
+                <Instagram size={20} />
               </a>
               <a
                 href="https://www.linkedin.com/company/th-bookshelves/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+                aria-label="LinkedIn"
               >
-                <span>LI</span>
+                <Linkedin size={20} />
               </a>
             </div>
           </div>
@@ -74,40 +88,50 @@ const Footer = () => {
           >
             Contact
           </Link>
-          <div className="text-text-dark dark:text-text-light font-body text-sm mt-4">
+          <div className="text-text-dark dark:text-text-light font-body text-sm mt-4 space-y-2">
             <p>
               <a href="mailto:thbookshelves@gmail.com" className="hover:text-primary-light dark:hover:text-primary-dark transition-colors">
                 Email: thbookshelves@gmail.com
               </a>
             </p>
+            <div className="flex flex-col space-y-1">
+              <div className="flex items-center space-x-2">
+                <Phone size={14} />
+                <span>+91 93300 31459</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Phone size={14} />
+                <span>+91 93309 06497</span>
+              </div>
+            </div>
           </div>
           <div className="flex space-x-4 mt-4 text-text-dark dark:text-text-light">
             <a
               href="https://facebook.com/thebookshelves"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-lg font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
               aria-label="Facebook"
             >
-              <span>FB</span>
+              📘
             </a>
             <a
               href="https://www.instagram.com/th_bookshelves"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-lg font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
               aria-label="Instagram"
             >
-              <span>IG</span>
+              📷
             </a>
             <a
               href="https://www.linkedin.com/company/th-bookshelves/"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-sm font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
+              className="p-2 text-lg font-body hover:text-primary-light dark:hover:text-primary-dark transition-colors"
               aria-label="LinkedIn"
             >
-              <span>LI</span>
+              💼
             </a>
           </div>
         </div>

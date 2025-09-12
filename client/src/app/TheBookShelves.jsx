@@ -7,7 +7,7 @@ import Carousel from "../components/carousel";
 import Footer from "../components/footer";
 import Header from "../components/header";
 import ThemeToggle from "../components/ThemeToggle";
-import { useAuth } from './Hooks/AuthContext'; // Import the useAuth hook
+import { useAuth } from './Hooks/AuthContext'; // Import the useAuth hook'
 
 function TheBookShelves() {
   const { user, isLoggedIn, loading, logout } = useAuth();

@@ -1,16 +1,47 @@
 "use client";
 import Link from "next/link";
-import Footer from "../../components/footer"; // Corrected path
-import Header from "../../components/header"; // Also corrected for consistency
-import ThemeToggle from "../../components/ThemeToggle"; // Import ThemeToggle
+import Footer from "../../components/footer";
+import Header from "../../components/header";
+import ThemeToggle from "../../components/ThemeToggle";
+import { useAuth } from '../Hooks/AuthContext'; // Import the useAuth hook
 
 function MainComponent() {
+  const { user, isLoggedIn, loading, logout } = useAuth();
+
+  const handleLogout = async () => {
+    console.log('Logout initiated from header');
+    const success = await logout();
+    if (success) {
+      console.log('Logout successful, reloading page.');
+      window.location.reload();
+    } else {
+      console.error('Logout failed');
+    }
+  };
+
+  const handleSearch = (e) => {
+    // You can implement search functionality or leave empty for this page
+    console.log('Search query:', e.target.value);
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-light dark:border-primary-dark mx-auto mb-4"></div>
+          <p className="text-text-light dark:text-text-dark">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark">
       <Header
-        location="New York"
-        onLocationChange={() => {}}
-        onSearch={() => {}}
+        user={user}
+        onSearch={handleSearch}
+        onLogout={handleLogout}
       />
       <main className="min-h-screen bg-background-light dark:bg-background-dark">
         <div className="bg-backgroundSCD-light dark:bg-backgroundSCD-dark py-16">
@@ -169,7 +200,7 @@ function MainComponent() {
         </div>
       </main>
       <Footer/>
-      <ThemeToggle /> {/* Add ThemeToggle component */}
+      <ThemeToggle />
     </div>
   );
 }
