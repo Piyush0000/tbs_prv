@@ -16,7 +16,7 @@ require('dotenv').config();
 // Payment constants - defined in backend for security
 const DEPOSIT_FEE = 29900; // ₹299 in paise
 const PLAN_FEE = 4900; // ₹49 in paise
-const NEW_USER_COUPONS = ["DINKY100", "KAVYA100", "LEO100", "KASIS100"];
+const NEW_USER_COUPONS = ["DINKY100", "KAVYA100", "LEO100", "KASIS100", "LOCALMAMA"];
 
 // Initialize Razorpay instance for payment processing
 const razorpay = new Razorpay({

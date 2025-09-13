@@ -253,6 +253,7 @@ router.put('/approve/:transaction_id', authMiddleware, async (req, res) => {
             
             if (!transaction) {
                 await session.abortTransaction();
+                await session.abortTransaction();
                 return res.status(404).json({ 
                     error: 'Transaction not found or not in pickup_pending status' 
                 });
@@ -410,45 +411,60 @@ router.put('/drop-off/:book_id', authMiddleware, async (req, res) => {
 
   try {
     if (!cafe_id) {
-      logger.warn(`Missing cafe_id in drop-off request for book: ${book_id}`);
       return res.status(400).json({ error: 'cafe_id is required' });
     }
 
     const user = await User.findById(req.userId);
     if (!user) {
-      logger.warn(`User not found for drop-off: ${req.userId}`);
       return res.status(404).json({ error: 'User not found' });
     }
 
     const book = await Book.findOne({ book_id });
     if (!book) {
-      logger.warn(`Book not found for drop-off: ${book_id}`);
       return res.status(404).json({ error: 'Book not found' });
     }
-    if (book.available || book.keeper_id !== user.user_id) {
-      logger.warn(`Book not with user for drop-off: ${book_id}, user: ${user.user_id}`);
-      return res.status(400).json({ error: 'Book is not currently with this user' });
+
+    // Check if user is supposed to have this book
+    if (user.book_id !== book_id) {
+      return res.status(400).json({ 
+        error: `This book is not assigned to you. Your current book: ${user.book_id}` 
+      });
     }
 
-    const transaction = await Transaction.findOne({ book_id: book._id, user_id: user._id, status: 'picked_up' });
-    if (!transaction) {
-      logger.warn(`No active transaction for drop-off: ${book_id}, user: ${user.user_id}`);
-      return res.status(404).json({ error: 'No active transaction found for this book' });
+    // Check if there's an active transaction where user picked up the book
+    const activeTransaction = await Transaction.findOne({
+      book_id: book._id,
+      user_id: user._id,
+      status: { $in: ['picked_up'] }
+    });
+
+    if (!activeTransaction) {
+      return res.status(400).json({ 
+        error: 'No active pickup transaction found. You need to pick up the book first.' 
+      });
     }
 
     const cafe = await Cafe.findOne({ cafe_id });
     if (!cafe) {
-      logger.warn(`Cafe not found for drop-off: ${cafe_id}`);
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
-    transaction.status = 'dropoff_pending';
-    transaction.cafe_id = cafe._id;
-    transaction.processed_at = new Date();
-    await transaction.save();
+    // Update the existing transaction to drop-off pending
+    activeTransaction.status = 'dropoff_pending';
+    activeTransaction.cafe_id = cafe._id;
+    activeTransaction.processed_at = new Date();
+    await activeTransaction.save();
 
-    logger.info(`Drop-off request initiated: ${transaction.transaction_id}, book: ${book_id}`);
-    res.status(200).json({ message: 'Drop-off request initiated successfully', transaction });
+    // Update book keeper to the new cafe
+    book.keeper_id = cafe_id;
+    await book.save();
+
+    logger.info(`Drop-off request initiated: ${activeTransaction.transaction_id}`);
+    res.status(200).json({ 
+      message: 'Drop-off request initiated successfully', 
+      transaction: activeTransaction 
+    });
+
   } catch (err) {
     logger.error(`Error initiating drop-off: ${err.message}`);
     res.status(500).json({ error: err.message });
