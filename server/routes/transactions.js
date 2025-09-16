@@ -235,61 +235,68 @@ router.get('/:transaction_id', async (req, res) => {
 
 // PUT /api/transactions/approve/:transaction_id - Approve transaction (for admin/scanner)
 // PUT /api/transactions/approve/:transaction_id - Approve transaction
-router.put('/approve/:transaction_id', authMiddleware, async (req, res) => {
-    try {
-        const { transaction_id } = req.params;
-        const { book_id } = req.body;
-        
-        console.log('Approving transaction:', transaction_id);
-        
-        const session = await mongoose.startSession();
-        session.startTransaction();
-        
-        try {
-            const transaction = await Transaction.findOne({ 
-                transaction_id: transaction_id,
-                status: 'pickup_pending'
-            }).session(session);
-            
-            if (!transaction) {
-                await session.abortTransaction();
-                await session.abortTransaction();
-                return res.status(404).json({ 
-                    error: 'Transaction not found or not in pickup_pending status' 
-                });
-            }
-            
-            // Update transaction
-            transaction.status = 'picked_up';
-            transaction.processed_at = new Date();
-            await transaction.save({ session });
-            
-            // Update book availability
-            const book = await Book.findById(transaction.book_id).session(session);
-            if (book) {
-                book.available = false;
-                await book.save({ session });
-            }
-            
-            await session.commitTransaction();
-            
-            res.status(200).json({
-                message: 'Transaction approved successfully',
-                transaction
-            });
-            
-        } catch (err) {
-            await session.abortTransaction();
-            throw err;
-        } finally {
-            session.endSession();
-        }
-        
-    } catch (err) {
-        console.error('Approve transaction error:', err);
-        res.status(500).json({ error: err.message });
+// Handles the result of a successful QR code scan
+const handleQrScan = async (data) => {
+  if (!data) return;
+  setIsScanning(false); // Stop scanning after a successful read
+  setIsLoading(true);
+  setInfo(`Processing user...`);
+  addDebugLog(`QR code scanned: ${data}`);
+
+  try {
+    // Parse the QR data first to extract user ID and transaction ID
+    const parsed = parseQRData(data);
+    const userId = parsed.userId;
+    const transactionId = parsed.transactionId;
+    
+    addDebugLog(`Parsed QR - User ID: ${userId}, Transaction ID: ${transactionId}`);
+    
+    const userData = await fetchUserData(data);
+    const userName = userData.name || userData.username || 'Unknown User';
+    
+    // Now properly set the scanned data with the correct values
+    setScannedData(prev => ({ 
+      ...prev, 
+      user: userId, 
+      transactionId: transactionId 
+    }));
+
+    setInfo(`User '${userName}' scanned successfully. Now scan a book cover.`);
+    addDebugLog(`User data set - ID: ${userId}, Name: ${userName}, Transaction: ${transactionId}`);
+    
+  } catch (err) {
+    addDebugLog(`Scan processing error: ${err.message}`, 'error');
+    setError(err.message || `Failed to process user`);
+  } finally {
+    setIsLoading(false);
+    setScanMode(null); // Reset mode after scan
+  }
+};
+
+// Add debugging function to check transaction status
+const checkTransactionStatus = async (transactionId) => {
+  try {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+    
+    if (response.ok) {
+      const transaction = await response.json();
+      addDebugLog(`Transaction ${transactionId} status: ${transaction.status}`);
+      console.log('Full transaction data:', transaction);
+      return transaction;
+    } else {
+      addDebugLog(`Transaction ${transactionId} not found - Status: ${response.status}`, 'error');
+      return null;
     }
-});
+  } catch (err) {
+    addDebugLog(`Error checking transaction: ${err.message}`, 'error');
+    return null;
+  }
+};
 
 // POST /api/transactions/scan/verify - Verify both QR codes and approve transaction
 router.post(
