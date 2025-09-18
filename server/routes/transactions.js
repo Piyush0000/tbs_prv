@@ -46,6 +46,8 @@ router.get('/', authMiddleware, async (req, res) => {
       if (!user) {
         logger.warn(`User not found for user_id: ${user_id}`);
         return res.status(404).json({ error: 'User not found' });
+
+
       }
       query.user_id = user._id;
     }
@@ -583,3 +585,6 @@ router.delete('/cancel/:transaction_id', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+
+// routes me kuchh BT h

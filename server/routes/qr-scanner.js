@@ -255,4 +255,3 @@ export default EnhancedQRScanner;
 
 
 
-/// have to add the scan for the drop off

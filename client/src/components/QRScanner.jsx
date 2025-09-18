@@ -75,6 +75,8 @@ function QRScanner({ onScanned }) {
       fullData: qrData
     };
   };
+
+  
   
   // Debug logging function
   const addDebugLog = (message, type = 'info') => {
