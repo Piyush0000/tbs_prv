@@ -9,7 +9,6 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 
-
 // Middleware to verify JWT
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -46,8 +45,6 @@ router.get('/', authMiddleware, async (req, res) => {
       if (!user) {
         logger.warn(`User not found for user_id: ${user_id}`);
         return res.status(404).json({ error: 'User not found' });
-
-
       }
       query.user_id = user._id;
     }
@@ -144,37 +141,36 @@ router.post(
         return res.status(400).json({ error: 'Basic subscription allows only one book at a time' });
       }
 
+      // Generate unique transaction ID
+      let isUnique = false;
+      let attempts = 0;
+      const maxAttempts = 5;
+      let newTransactionId;
+
+      while (!isUnique && attempts < maxAttempts) {
+        const timestamp = Date.now();
+        const randomStr = Math.random().toString(36).substring(2, 8);
+        newTransactionId = `TXN_${timestamp}_${randomStr}`;
+
+        console.log(`Attempt ${attempts + 1}: Checking uniqueness of transaction_id: ${newTransactionId}`);
+        const existingTransaction = await Transaction.findOne({ transaction_id: newTransactionId }).session(session);
+        if (!existingTransaction) {
+          isUnique = true;
+        }
+        attempts++;
+      }
+
+      if (!isUnique) {
+        throw new Error('Failed to generate a unique transaction_id after multiple attempts');
+      }
+
       const transactionData = {
+        transaction_id: newTransactionId,
         book_id: book._id,
         user_id: user._id,
         cafe_id: cafe._id,
         status: 'pickup_pending',
       };
-
-      if (!transactionData.transaction_id) {
-        let isUnique = false;
-        let attempts = 0;
-        const maxAttempts = 5;
-
-        while (!isUnique && attempts < maxAttempts) {
-          const timestamp = Date.now();
-          const randomStr = Math.random().toString(36).substring(2, 8);
-          const newTransactionId = `TXN_${timestamp}_${randomStr}`;
-
-          console.log(`Fallback - Attempt ${attempts + 1}: Checking uniqueness of transaction_id: ${newTransactionId}`);
-          const existingTransaction = await Transaction.findOne({ transaction_id: newTransactionId }).session(session);
-          if (!existingTransaction) {
-            transactionData.transaction_id = newTransactionId;
-            isUnique = true;
-          }
-          attempts++;
-        }
-
-        if (!isUnique) {
-          throw new Error('Failed to generate a unique transaction_id after multiple attempts');
-        }
-        console.log('Fallback - Generated transaction_id:', transactionData.transaction_id);
-      }
 
       const transaction = new Transaction(transactionData);
       console.log('Transaction before save:', transaction);
@@ -182,13 +178,10 @@ router.post(
       await transaction.save({ session });
       logger.info(`Transaction created successfully: ${transaction.transaction_id} for user: ${user.user_id}`);
 
+      // Reserve the book but don't assign to user yet (that happens on pickup approval)
       book.available = false;
       book.updatedAt = new Date();
       await book.save({ session });
-
-      user.book_id = book.book_id;
-      user.updatedAt = new Date();
-      await user.save({ session });
 
       await session.commitTransaction();
       res.status(201).json({ message: 'Pickup request created successfully', transaction });
@@ -202,7 +195,7 @@ router.post(
   }
 );
 
-
+// GET /api/transactions/:transaction_id - Get specific transaction
 router.get('/:transaction_id', async (req, res) => {
     try {
         const { transaction_id } = req.params;
@@ -235,93 +228,19 @@ router.get('/:transaction_id', async (req, res) => {
     }
 });
 
-// PUT /api/transactions/approve/:transaction_id - Approve transaction (for admin/scanner)
-// PUT /api/transactions/approve/:transaction_id - Approve transaction
-// Handles the result of a successful QR code scan
-const handleQrScan = async (data) => {
-  if (!data) return;
-  setIsScanning(false); // Stop scanning after a successful read
-  setIsLoading(true);
-  setInfo(`Processing user...`);
-  addDebugLog(`QR code scanned: ${data}`);
-
-  try {
-    // Parse the QR data first to extract user ID and transaction ID
-    const parsed = parseQRData(data);
-    const userId = parsed.userId;
-    const transactionId = parsed.transactionId;
-    
-    addDebugLog(`Parsed QR - User ID: ${userId}, Transaction ID: ${transactionId}`);
-    
-    const userData = await fetchUserData(data);
-    const userName = userData.name || userData.username || 'Unknown User';
-    
-    // Now properly set the scanned data with the correct values
-    setScannedData(prev => ({ 
-      ...prev, 
-      user: userId, 
-      transactionId: transactionId 
-    }));
-
-    setInfo(`User '${userName}' scanned successfully. Now scan a book cover.`);
-    addDebugLog(`User data set - ID: ${userId}, Name: ${userName}, Transaction: ${transactionId}`);
-    
-  } catch (err) {
-    addDebugLog(`Scan processing error: ${err.message}`, 'error');
-    setError(err.message || `Failed to process user`);
-  } finally {
-    setIsLoading(false);
-    setScanMode(null); // Reset mode after scan
-  }
-};
-
-// Add debugging function to check transaction status
-const checkTransactionStatus = async (transactionId) => {
-  try {
-    const token = localStorage.getItem("token");
-    const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}`, {
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
-    });
-    
-    if (response.ok) {
-      const transaction = await response.json();
-      addDebugLog(`Transaction ${transactionId} status: ${transaction.status}`);
-      console.log('Full transaction data:', transaction);
-      return transaction;
-    } else {
-      addDebugLog(`Transaction ${transactionId} not found - Status: ${response.status}`, 'error');
-      return null;
-    }
-  } catch (err) {
-    addDebugLog(`Error checking transaction: ${err.message}`, 'error');
-    return null;
-  }
-};
-
-// POST /api/transactions/scan/verify - Verify both QR codes and approve transaction
-router.post(
-  '/scan/verify',
+// PUT /api/transactions/approve/:transaction_id - Approve transaction (PICKUP PROCESS)
+router.put(
+  '/approve/:transaction_id',
   authMiddleware,
-  [
-    body('transaction_id').notEmpty().withMessage('transaction_id is required').trim(),
-    body('user_id').notEmpty().withMessage('user_id is required').trim(),
-    body('book_id').notEmpty().withMessage('book_id is required').trim(),
-  ],
   async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      logger.warn(`Validation error on POST /api/transactions/scan/verify: ${JSON.stringify(errors.array())}`);
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { transaction_id, user_id, book_id } = req.body;
+    const { transaction_id } = req.params;
+    const { book_id } = req.body;
     const session = await mongoose.startSession();
 
     try {
       session.startTransaction();
 
+      // Find the transaction
       const transaction = await Transaction.findOne({ transaction_id }).session(session);
       if (!transaction) {
         logger.warn(`Transaction not found: ${transaction_id}`);
@@ -329,83 +248,66 @@ router.post(
         return res.status(404).json({ error: 'Transaction not found' });
       }
 
-      if (!['pickup_pending', 'dropoff_pending'].includes(transaction.status)) {
-        logger.warn(`Transaction not in pending state: ${transaction_id}, status: ${transaction.status}`);
+      // Verify transaction is in correct state for approval
+      if (transaction.status !== 'pickup_pending') {
+        logger.warn(`Transaction not in pickup_pending state: ${transaction_id}, status: ${transaction.status}`);
         await session.abortTransaction();
-        return res.status(400).json({ error: 'Transaction is not pending' });
+        return res.status(400).json({ 
+          error: `Transaction is not pending pickup. Current status: ${transaction.status}` 
+        });
       }
 
-      const user = await User.findOne({ user_id }).session(session);
-      if (!user) {
-        logger.warn(`User not found: ${user_id}`);
-        await session.abortTransaction();
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      const book = await Book.findOne({ book_id }).session(session);
+      // Get the book from transaction
+      const book = await Book.findById(transaction.book_id).session(session);
       if (!book) {
-        logger.warn(`Book not found: ${book_id}`);
+        logger.warn(`Book not found for transaction: ${transaction_id}`);
         await session.abortTransaction();
         return res.status(404).json({ error: 'Book not found' });
       }
 
-      if (String(transaction.user_id) !== String(user._id) || String(transaction.book_id) !== String(book._id)) {
-        logger.warn(`QR codes do not match transaction: ${transaction_id}`);
+      // Verify the book_id matches if provided
+      if (book_id && book.book_id !== book_id) {
+        logger.warn(`Book ID mismatch: expected ${book.book_id}, got ${book_id}`);
         await session.abortTransaction();
-        return res.status(400).json({ error: 'Scanned QR codes do not match transaction' });
+        return res.status(400).json({ 
+          error: `Book ID mismatch. Expected: ${book.book_id}, Provided: ${book_id}` 
+        });
       }
 
-      if (transaction.status === 'pickup_pending') {
-        if (transaction.status === 'picked_up') {
-          logger.info(`Transaction already approved: ${transaction_id}`);
-          await session.commitTransaction();
-          return res.status(200).json({ message: 'Transaction already approved', transaction });
-        }
-
-        transaction.status = 'picked_up';
-        transaction.processed_at = new Date();
-        await transaction.save({ session });
-
-        book.available = false;
-        book.keeper_id = user.user_id;
-        book.updatedAt = new Date();
-        await book.save({ session });
-
-        user.book_id = book.book_id;
-        user.updatedAt = new Date();
-        await user.save({ session });
-
-        logger.info(`Pickup transaction approved: ${transaction_id}`);
-        await session.commitTransaction();
-        return res.status(200).json({ message: 'Pickup transaction approved', transaction });
-      } else if (transaction.status === 'dropoff_pending') {
-        const cafe = await Cafe.findById(transaction.cafe_id).session(session);
-        if (!cafe) {
-          logger.warn(`Cafe not found: ${transaction.cafe_id}`);
-          await session.abortTransaction();
-          return res.status(404).json({ error: 'Cafe not found' });
-        }
-
-        transaction.status = 'dropped_off';
-        transaction.processed_at = new Date();
-        await transaction.save({ session });
-
-        book.available = true;
-        book.keeper_id = cafe.cafe_id;
-        book.updatedAt = new Date();
-        await book.save({ session });
-
-        user.book_id = null;
-        user.updatedAt = new Date();
-        await user.save({ session });
-
-        logger.info(`Drop-off transaction completed: ${transaction_id}`);
-        await session.commitTransaction();
-        return res.status(200).json({ message: 'Drop-off transaction completed', transaction });
+      // Get the user
+      const user = await User.findById(transaction.user_id).session(session);
+      if (!user) {
+        logger.warn(`User not found for transaction: ${transaction_id}`);
+        await session.abortTransaction();
+        return res.status(404).json({ error: 'User not found' });
       }
+
+      // Update transaction status to picked_up
+      transaction.status = 'picked_up';
+      transaction.processed_at = new Date();
+      await transaction.save({ session });
+
+      // Update book - assign to user
+      book.available = false;
+      book.keeper_id = user.user_id;
+      book.updatedAt = new Date();
+      await book.save({ session });
+
+      // Update user - assign book to user
+      user.book_id = book.book_id;
+      user.updatedAt = new Date();
+      await user.save({ session });
+
+      await session.commitTransaction();
+      logger.info(`Pickup transaction approved: ${transaction_id}`);
+      res.status(200).json({ 
+        message: 'Transaction approved successfully', 
+        transaction,
+        book: { book_id: book.book_id, title: book.title }
+      });
     } catch (err) {
       await session.abortTransaction();
-      logger.error(`Error verifying QR codes: ${err.message}`);
+      logger.error(`Error approving transaction: ${err.message}`);
       res.status(500).json({ error: err.message });
     } finally {
       session.endSession();
@@ -417,57 +319,70 @@ router.post(
 router.put('/drop-off/:book_id', authMiddleware, async (req, res) => {
   const { book_id } = req.params;
   const { cafe_id } = req.body;
+  const session = await mongoose.startSession();
 
   try {
+    session.startTransaction();
+
     if (!cafe_id) {
       return res.status(400).json({ error: 'cafe_id is required' });
     }
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.userId).session(session);
     if (!user) {
+      await session.abortTransaction();
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const book = await Book.findOne({ book_id });
+    const book = await Book.findOne({ book_id }).session(session);
     if (!book) {
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Book not found' });
     }
 
-    // Check if user is supposed to have this book
+    // Check if user currently has this book
     if (user.book_id !== book_id) {
+      await session.abortTransaction();
       return res.status(400).json({ 
         error: `This book is not assigned to you. Your current book: ${user.book_id}` 
       });
     }
 
-    // Check if there's an active transaction where user picked up the book
+    // Verify book is currently with the user
+    if (book.keeper_id !== user.user_id) {
+      await session.abortTransaction();
+      return res.status(400).json({ 
+        error: 'Book is not currently in your possession' 
+      });
+    }
+
+    // Check if there's an active picked_up transaction for this book and user
     const activeTransaction = await Transaction.findOne({
       book_id: book._id,
       user_id: user._id,
-      status: { $in: ['picked_up'] }
-    });
+      status: 'picked_up'
+    }).session(session);
 
     if (!activeTransaction) {
+      await session.abortTransaction();
       return res.status(400).json({ 
         error: 'No active pickup transaction found. You need to pick up the book first.' 
       });
     }
 
-    const cafe = await Cafe.findOne({ cafe_id });
+    const cafe = await Cafe.findOne({ cafe_id }).session(session);
     if (!cafe) {
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
     // Update the existing transaction to drop-off pending
     activeTransaction.status = 'dropoff_pending';
-    activeTransaction.cafe_id = cafe._id;
-    activeTransaction.processed_at = new Date();
-    await activeTransaction.save();
+    activeTransaction.cafe_id = cafe._id; // Update the cafe for drop-off
+    activeTransaction.updatedAt = new Date();
+    await activeTransaction.save({ session });
 
-    // Update book keeper to the new cafe
-    book.keeper_id = cafe_id;
-    await book.save();
-
+    await session.commitTransaction();
     logger.info(`Drop-off request initiated: ${activeTransaction.transaction_id}`);
     res.status(200).json({ 
       message: 'Drop-off request initiated successfully', 
@@ -475,116 +390,164 @@ router.put('/drop-off/:book_id', authMiddleware, async (req, res) => {
     });
 
   } catch (err) {
+    await session.abortTransaction();
     logger.error(`Error initiating drop-off: ${err.message}`);
     res.status(500).json({ error: err.message });
+  } finally {
+    session.endSession();
   }
 });
 
-// PUT /api/transactions/complete/:transaction_id - Complete drop-off process
-router.put('/complete/:transaction_id', authMiddleware, async (req, res) => {
+// PUT /api/transactions/complete-dropoff/:transaction_id - Complete drop-off process (ADMIN/SCANNER)
+router.put('/complete-dropoff/:transaction_id', authMiddleware, async (req, res) => {
   const { transaction_id } = req.params;
+  const { book_id } = req.body;
+  const session = await mongoose.startSession();
 
   try {
-    console.log(`Completing transaction with transaction_id: ${transaction_id}`);
-    const transaction = await Transaction.findOne({ transaction_id, status: 'dropoff_pending' });
+    session.startTransaction();
+
+    console.log(`Completing drop-off for transaction: ${transaction_id}`);
+    
+    const transaction = await Transaction.findOne({ 
+      transaction_id, 
+      status: 'dropoff_pending' 
+    }).session(session);
+    
     if (!transaction) {
       logger.warn(`No pending drop-off transaction: ${transaction_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'No pending drop-off transaction found' });
     }
 
-    const book = await Book.findById(transaction.book_id);
+    const book = await Book.findById(transaction.book_id).session(session);
     if (!book) {
       logger.warn(`Book not found for drop-off completion: ${transaction.book_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Book not found' });
     }
 
-    const user = await User.findById(transaction.user_id);
+    // Verify the book_id matches if provided (for scanner verification)
+    if (book_id && book.book_id !== book_id) {
+      logger.warn(`Book ID mismatch during drop-off: expected ${book.book_id}, got ${book_id}`);
+      await session.abortTransaction();
+      return res.status(400).json({ 
+        error: `Book ID mismatch. Expected: ${book.book_id}, Provided: ${book_id}` 
+      });
+    }
+
+    const user = await User.findById(transaction.user_id).session(session);
     if (!user) {
       logger.warn(`User not found for drop-off completion: ${transaction.user_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const cafe = await Cafe.findById(transaction.cafe_id);
+    const cafe = await Cafe.findById(transaction.cafe_id).session(session);
     if (!cafe) {
       logger.warn(`Cafe not found for drop-off completion: ${transaction.cafe_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
+    // Complete the drop-off transaction
     transaction.status = 'dropped_off';
     transaction.processed_at = new Date();
-    await transaction.save();
+    await transaction.save({ session });
 
+    // Update book - make it available and assign to cafe
     book.available = true;
     book.keeper_id = cafe.cafe_id;
     book.updatedAt = new Date();
-    await book.save();
+    await book.save({ session });
 
+    // Update user - remove book assignment
     user.book_id = null;
     user.updatedAt = new Date();
-    await user.save();
+    await user.save({ session });
 
+    await session.commitTransaction();
     logger.info(`Drop-off completed successfully: ${transaction.transaction_id}`);
-    res.status(200).json({ message: 'Book drop-off completed successfully', transaction });
+    res.status(200).json({ 
+      message: 'Book drop-off completed successfully', 
+      transaction,
+      book: { book_id: book.book_id, title: book.title },
+      cafe: { cafe_id: cafe.cafe_id, name: cafe.name }
+    });
   } catch (err) {
+    await session.abortTransaction();
     logger.error(`Error completing drop-off: ${err.message}`);
     res.status(500).json({ error: err.message });
+  } finally {
+    session.endSession();
   }
 });
 
 // DELETE /api/transactions/cancel/:transaction_id - Cancel a pickup request
 router.delete('/cancel/:transaction_id', authMiddleware, async (req, res) => {
   const { transaction_id } = req.params;
+  const session = await mongoose.startSession();
 
   try {
-    const transaction = await Transaction.findOne({ transaction_id, status: 'pickup_pending' });
+    session.startTransaction();
+
+    const transaction = await Transaction.findOne({ 
+      transaction_id, 
+      status: 'pickup_pending' 
+    }).session(session);
+    
     if (!transaction) {
       logger.warn(`No pending pickup transaction found for transaction_id: ${transaction_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'No pending pickup transaction found' });
     }
 
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.userId).session(session);
     if (!user) {
       logger.warn(`User not found for cancelling transaction: ${req.userId}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'User not found' });
     }
 
     if (String(transaction.user_id) !== String(user._id)) {
       logger.warn(`Unauthorized attempt to cancel transaction: ${transaction_id} by user: ${user.user_id}`);
+      await session.abortTransaction();
       return res.status(403).json({ error: 'Unauthorized to cancel this transaction' });
     }
 
-    const book = await Book.findById(transaction.book_id);
+    const book = await Book.findById(transaction.book_id).session(session);
     if (!book) {
       logger.warn(`Book not found for cancelling transaction: ${transaction.book_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Book not found' });
     }
 
-    const cafe = await Cafe.findById(transaction.cafe_id);
+    const cafe = await Cafe.findById(transaction.cafe_id).session(session);
     if (!cafe) {
       logger.warn(`Cafe not found for cancelling transaction: ${transaction.cafe_id}`);
+      await session.abortTransaction();
       return res.status(404).json({ error: 'Cafe not found' });
     }
 
-    await transaction.deleteOne();
+    // Delete the transaction
+    await transaction.deleteOne({ session });
 
+    // Make book available again and assign back to cafe
     book.available = true;
     book.keeper_id = cafe.cafe_id;
     book.updatedAt = new Date();
-    await book.save();
+    await book.save({ session });
 
-    user.book_id = null;
-    user.updatedAt = new Date();
-    await user.save();
-
+    await session.commitTransaction();
     logger.info(`Pickup request cancelled successfully: ${transaction_id}`);
     res.status(200).json({ message: 'Pickup request cancelled successfully' });
   } catch (err) {
+    await session.abortTransaction();
     logger.error(`Error cancelling pickup request: ${err.message}`);
     res.status(500).json({ error: err.message });
+  } finally {
+    session.endSession();
   }
 });
 
 module.exports = router;
-
-
-// routes me kuchh BT h

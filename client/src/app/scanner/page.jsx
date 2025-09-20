@@ -167,29 +167,77 @@ function QRScanner({ onScanned }) {
 
   // Function to update transaction status to approved
   // Function to update transaction status to approved
+// Function to update transaction status based on current status
 const updateTransactionStatus = async (transactionId, bookId) => {
   try {
-    addDebugLog(`Updating transaction status for ID: ${transactionId}`);
+    addDebugLog(`Checking transaction status for ID: ${transactionId}`);
     const token = localStorage.getItem('token');
     
-    // Use the correct endpoint that exists in your backend
-    const response = await fetch(`${API_BASE_URL}/transactions/approve/${transactionId}`, {
+    if (!token) {
+      throw new Error('No authentication token found. Please log in again.');
+    }
+    
+    // First, get the current transaction status
+    const statusResponse = await fetch(`${API_BASE_URL}/transactions/${transactionId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    if (!statusResponse.ok) {
+      throw new Error('Failed to fetch transaction status');
+    }
+    
+    const transactionData = await statusResponse.json();
+    const currentStatus = transactionData.status;
+    
+    addDebugLog(`Current transaction status: ${currentStatus}`);
+    
+    let endpoint, action;
+    
+    if (currentStatus === 'pickup_pending') {
+      endpoint = `${API_BASE_URL}/transactions/approve/${transactionId}`;
+      action = 'pickup approval';
+    } else if (currentStatus === 'dropoff_pending') {
+      endpoint = `${API_BASE_URL}/transactions/complete-dropoff/${transactionId}`;
+      action = 'drop-off completion';
+    } else {
+      throw new Error(`Transaction status '${currentStatus}' cannot be processed. Expected 'pickup_pending' or 'dropoff_pending'.`);
+    }
+    
+    addDebugLog(`Processing ${action} for transaction ${transactionId}`);
+    
+    const response = await fetch(endpoint, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ book_id: bookId }),
     });
 
+    addDebugLog(`API response status: ${response.status}`);
+
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to approve transaction: ${errorData.error || response.statusText}`);
+      let errorMessage;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || response.statusText;
+      } catch (parseError) {
+        errorMessage = response.statusText || `HTTP ${response.status}`;
+      }
+      
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      
+      throw new Error(`Failed to process ${action}: ${errorMessage}`);
     }
 
     const updatedTransaction = await response.json();
-    addDebugLog(`Transaction approved successfully: ${JSON.stringify(updatedTransaction)}`);
-    return updatedTransaction;
+    addDebugLog(`${action} completed successfully: ${JSON.stringify(updatedTransaction)}`);
+    return { ...updatedTransaction, action, previousStatus: currentStatus };
   } catch (err) {
     addDebugLog(`Transaction update error: ${err.message}`, 'error');
     throw err;
