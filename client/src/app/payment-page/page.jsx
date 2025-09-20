@@ -1,13 +1,14 @@
 "use client";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Footer from "../../components/footer";
 import Header from "../../components/header";
 import ThemeToggle from "../../components/ThemeToggle";
 import { useAuth } from "../Hooks/useAuth";
 import { useUser } from "../Hooks/useUser";
 
-function PaymentPage() {
+// Separate component that uses useSearchParams
+function PaymentContent() {
   const searchParams = useSearchParams();
   const planTier = searchParams.get("plan") || "standard";
   const [error, setError] = useState(null);
@@ -298,216 +299,196 @@ function PaymentPage() {
     }
   };
 
- const handleSubscriptionPayment = async () => {
-  if (isProcessingPayment) return;
-  
-  try {
-    setIsProcessingPayment(true);
-    setError(null);
+  const handleSubscriptionPayment = async () => {
+    if (isProcessingPayment) return;
+    
+    try {
+      setIsProcessingPayment(true);
+      setError(null);
 
-    if (!user || user.deposit_status !== "deposited") {
-      setError("Please pay the deposit first.");
+      if (!user || user.deposit_status !== "deposited") {
+        setError("Please pay the deposit first.");
+        return;
+      }
+
+      if (!paymentConfig) {
+        setError("Payment configuration not loaded.");
+        return;
+      }
+
+      // Check if user already has active subscription
+      if (subscriptionDetails?.activeSubscription && 
+          ['active', 'auto_setup_pending'].includes(subscriptionDetails.activeSubscription.subscription_status)) {
+        setError("You already have an active subscription.");
+        return;
+      }
+
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        setError("Failed to load Razorpay SDK. Please try again.");
+        return;
+      }
+
+      let token = localStorage.getItem("token");
+      const requestBody = {
+        tier: planTier,
+      };
+
+      // Only include couponCode if it's applied
+      if (isCodeApplied && code.trim()) {
+        requestBody.couponCode = code.trim();
+      }
+
+      console.log('Sending subscription request:', requestBody);
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      await handleSubscriptionResponse(response, requestBody);
+    } catch (err) {
+      console.error("Error initiating subscription payment:", err.message);
+      setError(err.message);
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const handleSubscriptionResponse = async (response, requestBody) => {
+    if (response.status === 401) {
+      const token = await refreshToken();
+      if (!token) {
+        setError("Failed to refresh token. Please log in again.");
+        window.location.href = "/auth/signin";
+        return;
+      }
+      localStorage.setItem("token", token);
+      
+      const retryResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      if (!retryResponse.ok) {
+        const errorData = await retryResponse.json();
+        throw new Error(errorData.error || "Failed to create subscription after token refresh");
+      }
+      const orderData = await retryResponse.json();
+      console.log('Subscription order data (retry):', orderData);
+      initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
+    } else {
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Subscription creation failed:', errorData);
+        throw new Error(errorData.error || "Failed to create subscription");
+      }
+      const orderData = await response.json();
+      console.log('Subscription order data:', orderData);
+      initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
+    }
+  };
+
+  const initiatePayment = async (orderData, type) => {
+    console.log('Initiating payment with order data:', orderData, 'type:', type);
+    
+    if (!orderData.orderId) {
+      setError('Invalid order data received from server');
       return;
     }
 
-    if (!paymentConfig) {
-      setError("Payment configuration not loaded.");
-      return;
-    }
+    const isAutoPay = type === "subscription";
+    const paymentDescription = isAutoPay 
+      ? `AutoPay Setup for ${planTier} Plan (First Month ₹${orderData.amount / 100})`
+      : type === "deposit" 
+      ? "Security Deposit"
+      : `${planTier} Plan Monthly Payment (₹${orderData.amount / 100})`;
 
-    // Check if user already has active subscription
-    if (subscriptionDetails?.activeSubscription && 
-        ['active', 'auto_setup_pending'].includes(subscriptionDetails.activeSubscription.subscription_status)) {
-      setError("You already have an active subscription.");
-      return;
-    }
-
-    const scriptLoaded = await loadRazorpayScript();
-    if (!scriptLoaded) {
-      setError("Failed to load Razorpay SDK. Please try again.");
-      return;
-    }
-
-    let token = localStorage.getItem("token");
-    const requestBody = {
-      tier: planTier,
+    const options = {
+      key: orderData.key,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: "TheBookShelves Subscription",
+      description: paymentDescription,
+      order_id: type === "deposit" || type === "order" ? orderData.orderId : undefined,
+      subscription_id: type === "subscription" ? orderData.orderId : undefined,
+      handler: async (response) => {
+        try {
+          console.log('Razorpay handler response:', response);
+          await verifyPayment(response, type, orderData);
+        } catch (err) {
+          console.error(`Error in payment handler:`, err.message);
+          setError(err.message);
+        }
+      },
+      prefill: {
+        name: user?.name || "",
+        email: user?.email || "",
+        contact: user?.phone_number || "",
+      },
+      theme: {
+        color: "#1D4ED8",
+      },
+      modal: {
+        ondismiss: function() {
+          setIsProcessingPayment(false);
+        }
+      }
     };
 
-    // Only include couponCode if it's applied
-    if (isCodeApplied && code.trim()) {
-      requestBody.couponCode = code.trim();
-    }
-
-    console.log('Sending subscription request:', requestBody);
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-      }
-    );
-
-    await handleSubscriptionResponse(response, requestBody);
-  } catch (err) {
-    console.error("Error initiating subscription payment:", err.message);
-    setError(err.message);
-  } finally {
-    setIsProcessingPayment(false);
-  }
-};
-
-const handleSubscriptionResponse = async (response, requestBody) => {
-  if (response.status === 401) {
-    const token = await refreshToken();
-    if (!token) {
-      setError("Failed to refresh token. Please log in again.");
-      window.location.href = "/auth/signin";
-      return;
-    }
-    localStorage.setItem("token", token);
+    console.log('Razorpay options:', options);
     
-    const retryResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/users/create-subscription`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-      }
-    );
-    if (!retryResponse.ok) {
-      const errorData = await retryResponse.json();
-      throw new Error(errorData.error || "Failed to create subscription after token refresh");
-    }
-    const orderData = await retryResponse.json();
-    console.log('Subscription order data (retry):', orderData);
-    initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
-  } else {
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Subscription creation failed:', errorData);
-      throw new Error(errorData.error || "Failed to create subscription");
-    }
-    const orderData = await response.json();
-    console.log('Subscription order data:', orderData);
-    initiatePayment(orderData, orderData.useAutoPay ? "subscription" : "order");
-  }
-};
-
-const initiatePayment = async (orderData, type) => {
-  console.log('Initiating payment with order data:', orderData, 'type:', type);
-  
-  if (!orderData.orderId) {
-    setError('Invalid order data received from server');
-    return;
-  }
-
-  const isAutoPay = type === "subscription";
-  const paymentDescription = isAutoPay 
-    ? `AutoPay Setup for ${planTier} Plan (First Month ₹${orderData.amount / 100})`
-    : type === "deposit" 
-    ? "Security Deposit"
-    : `${planTier} Plan Monthly Payment (₹${orderData.amount / 100})`;
-
-  const options = {
-    key: orderData.key,
-    amount: orderData.amount,
-    currency: orderData.currency,
-    name: "TheBookShelves Subscription",
-    description: paymentDescription,
-    order_id: type === "deposit" || type === "order" ? orderData.orderId : undefined,
-    subscription_id: type === "subscription" ? orderData.orderId : undefined,
-    handler: async (response) => {
-      try {
-        console.log('Razorpay handler response:', response);
-        await verifyPayment(response, type, orderData);
-      } catch (err) {
-        console.error(`Error in payment handler:`, err.message);
-        setError(err.message);
-      }
-    },
-    prefill: {
-      name: user?.name || "",
-      email: user?.email || "",
-      contact: user?.phone_number || "",
-    },
-    theme: {
-      color: "#1D4ED8",
-    },
-    modal: {
-      ondismiss: function() {
-        setIsProcessingPayment(false);
-      }
-    }
+    const paymentObject = new window.Razorpay(options);
+    paymentObject.on("payment.failed", (response) => {
+      console.error('Payment failed:', response);
+      setError(`Payment failed: ${response.error.description}`);
+      setIsProcessingPayment(false);
+    });
+    paymentObject.open();
   };
 
-  console.log('Razorpay options:', options);
-  
-  const paymentObject = new window.Razorpay(options);
-  paymentObject.on("payment.failed", (response) => {
-    console.error('Payment failed:', response);
-    setError(`Payment failed: ${response.error.description}`);
-    setIsProcessingPayment(false);
-  });
-  paymentObject.open();
-};
+  const verifyPayment = async (response, type, orderData) => {
+    let token = localStorage.getItem("token");
+    const endpoint = type === "deposit" ? "verify-deposit-payment" : "verify-subscription-payment";
+    const payload = {
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_signature: response.razorpay_signature,
+    };
 
-const verifyPayment = async (response, type, orderData) => {
-  let token = localStorage.getItem("token");
-  const endpoint = type === "deposit" ? "verify-deposit-payment" : "verify-subscription-payment";
-  const payload = {
-    razorpay_payment_id: response.razorpay_payment_id,
-    razorpay_signature: response.razorpay_signature,
-  };
-
-  if (type !== "deposit") {
-    payload.tier = planTier;
-    payload.useAutoPay = type === "subscription";
-    
-    // Only include couponCode if it was applied
-    if (isCodeApplied && code.trim()) {
-      payload.couponCode = code.trim();
+    if (type !== "deposit") {
+      payload.tier = planTier;
+      payload.useAutoPay = type === "subscription";
+      
+      // Only include couponCode if it was applied
+      if (isCodeApplied && code.trim()) {
+        payload.couponCode = code.trim();
+      }
     }
-  }
 
-  if (type === "deposit") {
-    payload.razorpay_order_id = response.razorpay_order_id;
-  } else if (type === "order") {
-    payload.razorpay_order_id = response.razorpay_order_id;
-  } else if (type === "subscription") {
-    payload.razorpay_subscription_id = response.razorpay_subscription_id;
-  }
-
-  console.log('Verification payload:', payload);
-
-  const verifyResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/users/${endpoint}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
+    if (type === "deposit") {
+      payload.razorpay_order_id = response.razorpay_order_id;
+    } else if (type === "order") {
+      payload.razorpay_order_id = response.razorpay_order_id;
+    } else if (type === "subscription") {
+      payload.razorpay_subscription_id = response.razorpay_subscription_id;
     }
-  );
 
-  if (verifyResponse.status === 401) {
-    token = await refreshToken();
-    if (!token) {
-      setError("Failed to refresh token. Please log in again.");
-      window.location.href = "/auth/signin";
-      return;
-    }
-    localStorage.setItem("token", token);
-    const retryVerifyResponse = await fetch(
+    console.log('Verification payload:', payload);
+
+    const verifyResponse = await fetch(
       `${process.env.NEXT_PUBLIC_API_URL}/users/${endpoint}`,
       {
         method: "POST",
@@ -518,58 +499,78 @@ const verifyPayment = async (response, type, orderData) => {
         body: JSON.stringify(payload),
       }
     );
-    if (!retryVerifyResponse.ok) {
-      const errorData = await retryVerifyResponse.json();
-      throw new Error(
-        errorData.error || `Failed to verify ${type} payment after token refresh`
-      );
-    }
-    const verifyData = await retryVerifyResponse.json();
-    handlePaymentSuccess(verifyData, type, orderData);
-  } else {
-    if (!verifyResponse.ok) {
-      const errorData = await verifyResponse.json();
-      console.error('Payment verification failed:', errorData);
-      throw new Error(errorData.error || `Failed to verify ${type} payment`);
-    }
-    const verifyData = await verifyResponse.json();
-    console.log('Payment verification success:', verifyData);
-    handlePaymentSuccess(verifyData, type, orderData);
-  }
-};
 
-const handlePaymentSuccess = (verifyData, type, orderData) => {
-  console.log('Payment success:', verifyData, type, orderData);
-  
-  showToast(verifyData.message, "success");
-  refetchUser();
-  fetchSubscriptionDetails();
-  
-  if (type === "deposit") {
-    setDepositPaid(true);
-    showToast("Deposit payment successful! You can now set up your subscription.", "success");
-  } else if (type === "subscription") {
-    // AutoPay subscription
+    if (verifyResponse.status === 401) {
+      token = await refreshToken();
+      if (!token) {
+        setError("Failed to refresh token. Please log in again.");
+        window.location.href = "/auth/signin";
+        return;
+      }
+      localStorage.setItem("token", token);
+      const retryVerifyResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/users/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!retryVerifyResponse.ok) {
+        const errorData = await retryVerifyResponse.json();
+        throw new Error(
+          errorData.error || `Failed to verify ${type} payment after token refresh`
+        );
+      }
+      const verifyData = await retryVerifyResponse.json();
+      handlePaymentSuccess(verifyData, type, orderData);
+    } else {
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json();
+        console.error('Payment verification failed:', errorData);
+        throw new Error(errorData.error || `Failed to verify ${type} payment`);
+      }
+      const verifyData = await verifyResponse.json();
+      console.log('Payment verification success:', verifyData);
+      handlePaymentSuccess(verifyData, type, orderData);
+    }
+  };
+
+  const handlePaymentSuccess = (verifyData, type, orderData) => {
+    console.log('Payment success:', verifyData, type, orderData);
+    
+    showToast(verifyData.message, "success");
+    refetchUser();
+    fetchSubscriptionDetails();
+    
+    if (type === "deposit") {
+      setDepositPaid(true);
+      showToast("Deposit payment successful! You can now set up your subscription.", "success");
+    } else if (type === "subscription") {
+      // AutoPay subscription
+      setTimeout(() => {
+        const regularAmount = verifyData.regularAmount || 49;
+        showToast(`AutoPay activated! You paid ₹${verifyData.actualAmountPaid} for the first month. Regular billing of ₹${regularAmount}/month will start next month.`, "success");
+      }, 1000);
+    } else if (type === "order") {
+      // Regular one-time payment
+      setTimeout(() => {
+        showToast(`Payment successful! You've paid ₹${verifyData.actualAmountPaid} for this month's subscription.`, "success");
+      }, 1000);
+    }
+    
+    // Clear coupon after successful payment
+    if (isCodeApplied) {
+      clearCoupon();
+    }
+    
     setTimeout(() => {
-      const regularAmount = verifyData.regularAmount || 49;
-      showToast(`AutoPay activated! You paid ₹${verifyData.actualAmountPaid} for the first month. Regular billing of ₹${regularAmount}/month will start next month.`, "success");
-    }, 1000);
-  } else if (type === "order") {
-    // Regular one-time payment
-    setTimeout(() => {
-      showToast(`Payment successful! You've paid ₹${verifyData.actualAmountPaid} for this month's subscription.`, "success");
-    }, 1000);
-  }
-  
-  // Clear coupon after successful payment
-  if (isCodeApplied) {
-    clearCoupon();
-  }
-  
-  setTimeout(() => {
-    window.location.href = "/profile";
-  }, 3000);
-};
+      window.location.href = "/profile";
+    }, 3000);
+  };
 
   const clearCoupon = () => {
     setCode("");
@@ -1077,6 +1078,27 @@ const handlePaymentSuccess = (verifyData, type, orderData) => {
         </div>
       )}
     </div>
+  );
+}
+
+// Loading component for Suspense fallback
+function PaymentPageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-text-light dark:text-text-dark">Loading payment page...</p>
+      </div>
+    </div>
+  );
+}
+
+// Main component with Suspense wrapper
+function PaymentPage() {
+  return (
+    <Suspense fallback={<PaymentPageLoading />}>
+      <PaymentContent />
+    </Suspense>
   );
 }
 

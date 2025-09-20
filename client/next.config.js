@@ -1,12 +1,10 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export', // ✅ enables static export in Next 13+
   experimental: {
-    esmExternals: 'loose'
+    esmExternals: 'loose',
   },
   webpack: (config) => {
-    config.externals = [...config.externals, { canvas: "canvas" }]; // required to make pdfjs work
+    config.externals = [...config.externals, { canvas: "canvas" }];
     return config;
   },
 };
-
-module.exports = nextConfig;
