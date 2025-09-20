@@ -66,7 +66,7 @@ app.use(cookieParser());
 // Configure CORS
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
-        ? 'https://www.thebookshelves.com
+        ? 'https://www.thebookshelves.com'
         : 'https://www.thebookshelves.com',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
