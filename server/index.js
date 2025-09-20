@@ -55,7 +55,7 @@ app.use(cookieParser());
 // Configure CORS
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
-        ? 'https://your-frontend-domain.com'
+        ? 'https://tbs-prv-u28f.vercel.app'
         : 'http://localhost:3000',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
