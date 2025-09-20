@@ -47,6 +47,17 @@ if (!process.env.JWT_SECRET || !process.env.MONGODB_URI || !process.env.RAZORPAY
 
 const app = express();
 
+// IMPORTANT: Configure proxy trust BEFORE rate limiting
+// This fixes the X-Forwarded-For header validation error
+if (process.env.NODE_ENV === 'production') {
+    // In production, trust the first proxy (common for most deployment scenarios)
+    app.set('trust proxy', 1);
+} else {
+    // In development, you might want to trust all proxies or set specific IPs
+    // For local development with reverse proxy testing:
+    app.set('trust proxy', true);
+}
+
 app.use(cookieParser());
 
 // IMPORTANT: Webhook routes with raw body parser MUST come BEFORE express.json()
@@ -72,24 +83,32 @@ app.use((req, res, next) => {
     next();
 });
 
+// Rate limiting configuration with improved settings
 const generalLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 100,
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 100, // limit each IP to 100 requests per windowMs
     message: 'Too many requests from this IP, please try again after a minute',
-    standardHeaders: true,
-    legacyHeaders: false,
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    // Optional: Skip successful requests (only count failed requests)
+    skipSuccessfulRequests: false,
+    // Optional: Skip failed requests (only count successful requests)
+    skipFailedRequests: false,
 });
 
 const authLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 50,
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 50, // limit each IP to 50 auth requests per windowMs
     message: 'Too many authentication attempts from this IP, please try again after a minute',
     standardHeaders: true,
     legacyHeaders: false,
+    // More strict for auth endpoints
+    skipSuccessfulRequests: false,
+    skipFailedRequests: false,
 });
 
+// Apply general rate limiting to all API routes
 app.use('/api/', generalLimiter);
-
 
 // Database connection middleware
 const checkDatabaseConnection = (req, res, next) => {
@@ -114,7 +133,6 @@ app.use('/api/client', checkDatabaseConnection, clientPortalRoutes);
 app.use('/api/admin', checkDatabaseConnection, adminPortalRoutes);
 app.use('/api/import', checkDatabaseConnection, importRoutes);
 
-
 // Health check endpoint
 app.get('/health', (req, res) => {
     const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
@@ -122,7 +140,11 @@ app.get('/health', (req, res) => {
         status: 'OK', 
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
-        database: dbStatus
+        database: dbStatus,
+        // Include proxy info for debugging
+        trustProxy: app.get('trust proxy'),
+        clientIP: req.ip,
+        forwardedFor: req.get('X-Forwarded-For')
     });
 });
 
@@ -267,6 +289,7 @@ const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔒 Proxy trust setting: ${app.get('trust proxy')}`);
     console.log('💳 Payment system initialized with Razorpay integration');
 });
 
