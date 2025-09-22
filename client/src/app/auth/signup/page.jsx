@@ -111,32 +111,61 @@ function SignUpPage() {
     }
   };
 
-  const handleOtpSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+ // Updated handleOtpSubmit function with proper token handling
 
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email.toLowerCase(), otp: otp.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'OTP verification failed.');
+const handleOtpSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError(null);
 
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: formData.email.toLowerCase(), 
+        otp: otp.trim() 
+      }),
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      throw new Error(data.message || 'OTP verification failed.');
+    }
+
+    console.log('OTP verification response:', data); // Debug log
+
+    // Check if the backend returns a token after verification
+    if (data.token) {
+      // Store the token
+      localStorage.setItem('token', data.token);
+      
+      // If you have AuthContext, update the user state
+      // setUser(data.user); // Uncomment if you have user context
+      
       setMessage(data.message || "Account verified successfully! Redirecting...");
+      
+      // Redirect to dashboard instead of signin
+      setTimeout(() => {
+        window.location.href = data.redirectTo || '/dashboard';
+      }, 2000);
+    } else {
+      // If no token is returned, redirect to signin
+      setMessage(data.message || "Account verified successfully! Please sign in.");
+      
       setTimeout(() => {
         window.location.href = data.redirectTo || '/auth/signin';
       }, 2000);
-
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  };
 
+  } catch (err) {
+    console.error('OTP verification error:', err); // Debug log
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const handleResendOtp = async () => {
     setResendLoading(true);
     setError(null);

@@ -63,15 +63,17 @@ app.use(cookieParser());
 // IMPORTANT: Webhook routes with raw body parser MUST come BEFORE express.json()
 // app.use('/api/webhooks/razorpay', express.raw({type: 'application/json'}), webhookRoutes);
 
-// Configure CORS
+// FIXED: Configure CORS for localhost development
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
         ? 'https://www.thebookshelves.com'
-        : 'https://www.thebookshelves.com',
+        : ['http://localhost:3000', 'https://localhost:3000'], // Support both HTTP and HTTPS localhost
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
 };
+
+console.log('CORS configured for origin:', corsOptions.origin);
 app.use(cors(corsOptions));
 
 // Parse JSON request bodies (comes AFTER webhook raw parser)
@@ -291,6 +293,7 @@ const server = app.listen(PORT, () => {
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Proxy trust setting: ${app.get('trust proxy')}`);
     console.log('💳 Payment system initialized with Razorpay integration');
+    console.log(`🔗 CORS enabled for: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
 });
 
 // Handle server errors
