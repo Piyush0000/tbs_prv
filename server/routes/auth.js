@@ -6,15 +6,14 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { sendOTPEmail, testEmailConnection } = require('../utils/mailer');
 
-// Remove the CORS configuration from here - it should be in your main app file
+// Import Transaction model (this was missing)
+const Transaction = require('../models/Transaction');
 
 /**
  * @route   GET /api/auth/profile
  * @desc    Get user profile from httpOnly cookie
  * @access  Private
  */
-// In your auth.js file, update the /profile route:
-
 router.get('/profile', async (req, res) => {
     try {
         console.log('Profile check - Headers:', req.headers);
@@ -122,16 +121,23 @@ router.post('/signup', async (req, res) => {
 
         console.log('✅ All validations passed');
 
-        // Test email connection first
+        // Test email connection first - Add error handling
         console.log('1.5. Testing email connection...');
-        const emailConnectionOk = await testEmailConnection();
-        if (!emailConnectionOk) {
-            console.log('❌ Email connection failed');
+        try {
+            const emailConnectionOk = await testEmailConnection();
+            if (!emailConnectionOk) {
+                console.log('❌ Email connection failed');
+                return res.status(500).json({ 
+                    message: "Email service is currently unavailable. Please try again later." 
+                });
+            }
+            console.log('✅ Email connection verified');
+        } catch (emailTestError) {
+            console.log('❌ Email connection test failed:', emailTestError.message);
             return res.status(500).json({ 
-                message: "Email service is currently unavailable. Please try again later." 
+                message: "Email service configuration error. Please try again later." 
             });
         }
-        console.log('✅ Email connection verified');
 
         // Check if user already exists
         console.log('2. Checking for existing user...');
@@ -167,7 +173,6 @@ router.post('/signup', async (req, res) => {
 
         console.log('Generated OTP:', otp);
         console.log('OTP expires at:', otpExpires);
-        console.log('OTP type:', typeof otp);
 
         // Create new user
         console.log('4. Creating new user object...');
@@ -175,7 +180,7 @@ router.post('/signup', async (req, res) => {
             name,
             phone_number,
             email: email.toLowerCase(),
-            password,
+            password, // Let the pre-save hook handle hashing
             otp,
             otpExpires,
             isVerified: false,
@@ -183,7 +188,6 @@ router.post('/signup', async (req, res) => {
         });
 
         console.log('User object created, OTP stored as:', newUser.otp);
-        console.log('About to save user...');
 
         // Save user
         console.log('5. Saving user to database...');
@@ -192,40 +196,15 @@ router.post('/signup', async (req, res) => {
         console.log('✅ User saved successfully!');
         console.log('User ID:', savedUser._id);
         console.log('Generated user_id:', savedUser.user_id);
-        console.log('Saved OTP in DB:', savedUser.otp);
         
-        // Verify the user was actually saved with OTP
-        console.log('6. Verifying user in database...');
-        const verifyUser = await User.findById(savedUser._id);
-        console.log('Verification - User exists:', !!verifyUser);
-        console.log('Verification - OTP in DB:', verifyUser ? verifyUser.otp : 'USER NOT FOUND');
-        console.log('Verification - OTP Expires:', verifyUser ? verifyUser.otpExpires : 'USER NOT FOUND');
-        
-        if (!verifyUser) {
-            console.log('❌ CRITICAL: User not found after save!');
-            return res.status(500).json({ message: "User creation failed - not saved to database" });
-        }
-        
-        if (!verifyUser.otp) {
-            console.log('❌ CRITICAL: OTP not saved to database!');
-            return res.status(500).json({ message: "OTP not saved to database" });
-        }
-
         // Send OTP email
-        console.log('7. Attempting to send OTP email...');
+        console.log('6. Attempting to send OTP email...');
         try {
-            // Check if sendOTPEmail is available
-            if (typeof sendOTPEmail !== 'function') {
-                throw new Error('sendOTPEmail is not a function - check mailer import');
-            }
-            
             const emailResult = await sendOTPEmail(savedUser.email, otp);
             console.log('✅ Email sent successfully');
-            console.log('Email result:', emailResult);
             
         } catch (emailError) {
             console.log('❌ Email sending failed:', emailError.message);
-            console.log('Email error details:', emailError);
             
             // Delete the user since email failed
             await User.deleteOne({ _id: savedUser._id });
@@ -237,7 +216,7 @@ router.post('/signup', async (req, res) => {
             });
         }
 
-        console.log('8. Signup process completed successfully');
+        console.log('7. Signup process completed successfully');
         console.log('=== SIGNUP PROCESS END ===\n');
 
         res.status(201).json({ 
@@ -253,23 +232,28 @@ router.post('/signup', async (req, res) => {
     } catch (error) {
         console.log('❌ SIGNUP ERROR:', error.message);
         console.log('Error stack:', error.stack);
-        console.log('Error details:', error);
         console.log('=== SIGNUP PROCESS END (ERROR) ===\n');
+        
+        // Handle specific MongoDB errors
+        if (error.code === 11000) {
+            return res.status(400).json({ 
+                message: "User with this email or phone number already exists" 
+            });
+        }
         
         res.status(500).json({ 
             message: "Internal server error",
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            error: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred during registration'
         });
     }
 });
 
-
-
-// Add this route to your users router (add it after the /profile route)
-
-// GET /:user_id: Get a specific user by user_id (for QR scanner)
-router.get('/:user_id', async (req, res) => {
+/**
+ * @route   GET /api/users/:user_id (MOVED TO CORRECT PLACE)
+ * @desc    Get a specific user by user_id (for QR scanner)
+ * @access  Public
+ */
+router.get('/users/:user_id', async (req, res) => {
     try {
         const { user_id } = req.params;
         console.log('Looking for user with user_id:', user_id);
@@ -279,15 +263,9 @@ router.get('/:user_id', async (req, res) => {
         
         if (!user) {
             console.log('User not found:', user_id);
-            
-            // Debug: Show available users for troubleshooting
-            const availableUsers = await User.find({}, 'user_id name email').limit(5);
-            console.log('Available users:', availableUsers.map(u => ({ user_id: u.user_id, name: u.name })));
-            
             return res.status(404).json({ 
                 error: 'User not found',
-                requestedId: user_id,
-                available: availableUsers.map(u => ({ user_id: u.user_id, name: u.name }))
+                requestedId: user_id
             });
         }
         
@@ -314,10 +292,6 @@ router.get('/:user_id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-// IMPORTANT: Make sure this route is placed BEFORE the PUT /:user_id route
-// Otherwise Express will try to match PUT requests to this GET route first
-
 
 /**
  * @route   POST /api/auth/signin
@@ -391,7 +365,7 @@ router.post('/signin', async (req, res) => {
 
         console.log('✅ Token generated');
 
-        // Fix: Properly parse cookie expiration days
+        // Set cookie options
         console.log('5. Setting cookie...');
         const cookieExpireDays = parseInt(process.env.JWT_COOKIE_EXPIRE || '7', 10);
         const cookieOptions = {
@@ -401,18 +375,11 @@ router.post('/signin', async (req, res) => {
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
         };
 
-        console.log('Cookie options:', {
-            expires: cookieOptions.expires,
-            httpOnly: cookieOptions.httpOnly,
-            secure: cookieOptions.secure,
-            sameSite: cookieOptions.sameSite
-        });
-
         // Set the token in cookie
         res.cookie('token', token, cookieOptions);
         console.log('✅ Token saved in cookie');
 
-        // Prepare user data for response (excluding sensitive info)
+        // Prepare user data for response
         const userData = {
             id: user._id,
             user_id: user.user_id,
@@ -428,18 +395,17 @@ router.post('/signin', async (req, res) => {
 
         res.status(200).json({
             message: "Sign in successful",
-            token, // Still sending token in response for compatibility
+            token, // Still sending token for compatibility
             user: userData
         });
 
     } catch (error) {
         console.log('❌ SIGNIN ERROR:', error.message);
-        console.log('Error stack:', error.stack);
         console.log('=== SIGNIN PROCESS END (ERROR) ===\n');
         
         res.status(500).json({ 
             message: "Internal server error",
-            error: error.message
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Sign in failed'
         });
     }
 });
@@ -473,13 +439,10 @@ router.post('/signout', (req, res) => {
         console.log('=== SIGNOUT PROCESS END (ERROR) ===\n');
         
         res.status(500).json({ 
-            message: "Internal server error",
-            error: error.message
+            message: "Internal server error"
         });
     }
 });
-
-// ... rest of your routes (verify-otp, resend-otp, forgot-password, reset-password) remain the same ...
 
 /**
  * @route   POST /api/auth/verify-otp
@@ -493,26 +456,17 @@ router.post('/verify-otp', async (req, res) => {
     try {
         const { email, otp } = req.body;
 
-        console.log('OTP verification request:', { email, otp });
-
-        // Enhanced validation with better error messages
-        if (!email || email.trim() === '') {
-            return res.status(400).json({ message: "Email is required." });
-        }
-        
-        if (!otp || otp.trim() === '') {
-            return res.status(400).json({ message: "OTP is required." });
+        // Validation
+        if (!email || !otp) {
+            return res.status(400).json({ message: "Email and OTP are required" });
         }
 
-        // Validate OTP format (should be 6 digits)
         const cleanOtp = otp.trim();
         if (!/^\d{6}$/.test(cleanOtp)) {
-            return res.status(400).json({ message: "OTP must be exactly 6 digits." });
+            return res.status(400).json({ message: "OTP must be exactly 6 digits" });
         }
 
         const cleanEmail = email.toLowerCase().trim();
-        
-        console.log('Looking for user with email:', cleanEmail);
         
         // Find user with matching email and valid OTP expiration
         const user = await User.findOne({
@@ -522,39 +476,27 @@ router.post('/verify-otp', async (req, res) => {
         });
 
         if (!user) {
-            console.log('User not found or OTP expired for email:', cleanEmail);
             // Check if user exists at all
             const userExists = await User.findOne({ email: cleanEmail });
             if (!userExists) {
-                console.log('No user found with this email');
                 return res.status(400).json({ 
                     message: "User not found. Please register first." 
                 });
             } else if (userExists.isVerified) {
-                console.log('User already verified');
                 return res.status(400).json({ 
-                    message: "Account already verified. Please sign in.",
-                    redirectTo: "/auth/signin"
+                    message: "Account already verified. Please sign in." 
                 });
             } else {
-                console.log('OTP expired for user');
                 return res.status(400).json({ 
                     message: "OTP has expired. Please request a new one." 
                 });
             }
         }
 
-        console.log('User found:', user._id);
-        console.log('Stored OTP:', user.otp);
-        console.log('Provided OTP:', cleanOtp);
-
-        // Compare OTP (direct comparison since we're storing as plain text)
+        // Compare OTP
         if (user.otp !== cleanOtp) {
-            console.log('OTP mismatch');
             return res.status(400).json({ message: "Invalid OTP. Please try again." });
         }
-
-        console.log('OTP verified successfully');
 
         // OTP is correct, verify the user
         user.isVerified = true;
@@ -562,29 +504,20 @@ router.post('/verify-otp', async (req, res) => {
         user.otpExpires = undefined;
         await user.save();
         
-        console.log('User verified and saved');
+        console.log('User verified successfully');
         console.log('=== OTP VERIFICATION END ===\n');
         
         res.status(200).json({ 
-            message: "Email verified successfully! Redirecting to sign in...",
-            redirectTo: "/auth/signin"
+            message: "Email verified successfully! You can now sign in." 
         });
 
     } catch (error) {
         console.error("OTP Verification Error:", error);
-        console.error("Error stack:", error.stack);
         console.log('=== OTP VERIFICATION END (ERROR) ===\n');
         
-        // More specific error handling
-        if (error.name === 'CastError') {
-            return res.status(400).json({ message: "Invalid data format." });
-        }
-        
-        if (error.name === 'ValidationError') {
-            return res.status(400).json({ message: "Validation error: " + error.message });
-        }
-        
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res.status(500).json({ 
+            message: "Internal server error" 
+        });
     }
 });
 
@@ -599,8 +532,6 @@ router.post('/resend-otp', async (req, res) => {
     try {
         const { email } = req.body;
 
-        console.log('Resend OTP request for:', email);
-
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
         }
@@ -611,7 +542,6 @@ router.post('/resend-otp', async (req, res) => {
         });
 
         if (!user) {
-            console.log('No unverified user found for email:', email);
             return res.status(400).json({ 
                 message: "User not found or already verified" 
             });
@@ -621,13 +551,9 @@ router.post('/resend-otp', async (req, res) => {
         const otp = crypto.randomInt(100000, 999999).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-        console.log('Generated new OTP:', otp);
-
-        user.otp = otp; // Store as plain text
+        user.otp = otp;
         user.otpExpires = otpExpires;
         await user.save();
-
-        console.log('Updated user with new OTP');
 
         // Send new OTP
         try {
@@ -647,10 +573,9 @@ router.post('/resend-otp', async (req, res) => {
     } catch (error) {
         console.error("Resend OTP Error:", error);
         console.log('=== RESEND OTP END (ERROR) ===\n');
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res.status(500).json({ message: "Internal server error" });
     }
 });
-
 
 /**
  * @route   POST /api/auth/forgot-password
@@ -663,8 +588,6 @@ router.post('/forgot-password', async (req, res) => {
     try {
         const { email } = req.body;
 
-        console.log('Forgot password request for:', email);
-
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
         }
@@ -675,7 +598,6 @@ router.post('/forgot-password', async (req, res) => {
         });
 
         if (!user) {
-            console.log('No verified user found for email:', email);
             return res.status(400).json({ 
                 message: "User not found" 
             });
@@ -685,13 +607,9 @@ router.post('/forgot-password', async (req, res) => {
         const otp = crypto.randomInt(100000, 999999).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-        console.log('Generated password reset OTP:', otp);
-
         user.otp = otp;
         user.otpExpires = otpExpires;
         await user.save();
-
-        console.log('Updated user with password reset OTP');
 
         // Send OTP email
         try {
@@ -711,7 +629,7 @@ router.post('/forgot-password', async (req, res) => {
     } catch (error) {
         console.error("Forgot Password Error:", error);
         console.log('=== FORGOT PASSWORD END (ERROR) ===\n');
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res.status(500).json({ message: "Internal server error" });
     }
 });
 
@@ -725,8 +643,6 @@ router.post('/reset-password', async (req, res) => {
     
     try {
         const { email, otp, newPassword } = req.body;
-
-        console.log('Reset password request for:', email);
 
         if (!email || !otp || !newPassword) {
             return res.status(400).json({ message: "Email, OTP, and new password are required" });
@@ -746,7 +662,6 @@ router.post('/reset-password', async (req, res) => {
         });
 
         if (!user) {
-            console.log('No user found or OTP expired for email:', email);
             return res.status(400).json({ 
                 message: "User not found or OTP expired" 
             });
@@ -754,14 +669,10 @@ router.post('/reset-password', async (req, res) => {
 
         // Verify OTP
         if (user.otp !== otp.trim()) {
-            console.log('OTP mismatch for password reset');
             return res.status(400).json({ message: "Invalid OTP" });
         }
 
-        console.log('OTP verified for password reset');
-
-        // IMPORTANT: Set the plain password - let the pre-save hook handle hashing
-        // Do NOT hash it manually here to avoid double-hashing
+        // Set the plain password - let the pre-save hook handle hashing
         user.password = newPassword;
         user.otp = undefined;
         user.otpExpires = undefined;
@@ -778,16 +689,20 @@ router.post('/reset-password', async (req, res) => {
     } catch (error) {
         console.error("Reset Password Error:", error);
         console.log('=== RESET PASSWORD END (ERROR) ===\n');
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res.status(500).json({ message: "Internal server error" });
     }
 });
 
 /**
+ * TRANSACTION ROUTES (MOVED TO SEPARATE SECTION)
+ */
+
+/**
  * @route   GET /api/transactions/:transaction_id
  * @desc    Get transaction details by transaction_id (for QR scanner)
- * @access  Public (or add auth middleware if needed)
+ * @access  Public
  */
-router.get('/:transaction_id', async (req, res) => {
+router.get('/transactions/:transaction_id', async (req, res) => {
     try {
         const { transaction_id } = req.params;
         console.log('Looking for transaction with transaction_id:', transaction_id);
@@ -799,25 +714,9 @@ router.get('/:transaction_id', async (req, res) => {
         
         if (!transaction) {
             console.log('Transaction not found:', transaction_id);
-            
-            // Debug: Show recent transactions for troubleshooting
-            const recentTransactions = await Transaction.find({})
-                .sort({ created_at: -1 })
-                .limit(5)
-                .select('transaction_id status created_at');
-            
-            console.log('Recent transactions:', recentTransactions.map(t => ({ 
-                transaction_id: t.transaction_id, 
-                status: t.status 
-            })));
-            
             return res.status(404).json({ 
                 error: 'Transaction not found',
-                requestedId: transaction_id,
-                recentTransactions: recentTransactions.map(t => ({ 
-                    transaction_id: t.transaction_id, 
-                    status: t.status 
-                }))
+                requestedId: transaction_id
             });
         }
         
@@ -850,12 +749,11 @@ router.get('/:transaction_id', async (req, res) => {
  * @desc    Approve a transaction (update status to picked_up)
  * @access  Private (admin only)
  */
-router.put('/approve/:transaction_id', async (req, res) => {
+router.put('/transactions/approve/:transaction_id', async (req, res) => {
     try {
         const { transaction_id } = req.params;
-        const { book_id } = req.body;
         
-        console.log('Approving transaction:', transaction_id, 'with book_id:', book_id);
+        console.log('Approving transaction:', transaction_id);
         
         // Find and update transaction
         const transaction = await Transaction.findOneAndUpdate(
@@ -895,7 +793,5 @@ router.put('/approve/:transaction_id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-
 
 module.exports = router;
