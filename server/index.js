@@ -67,7 +67,7 @@ app.use(cookieParser());
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production'
         ? 'https://www.thebookshelves.com'
-        : ['http://localhost:3000', 'https://localhost:3000'], // Support both HTTP and HTTPS localhost
+        : ['https://www.thebookshelves.com', 'https://www.thebookshelves.com'], // Support both HTTP and HTTPS localhost
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
