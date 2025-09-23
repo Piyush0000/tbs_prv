@@ -15,72 +15,91 @@ const { sendOTPEmail, testEmailConnection } = require('../utils/mailer');
  */
 // In your auth.js file, update the /profile route:
 
+// Update your /profile route in auth.js
+// Update your /profile route in auth.js
 router.get('/profile', async (req, res) => {
     try {
-        console.log('Profile check - Headers:', req.headers);
-        console.log('Profile check - Cookies:', req.cookies);
+        console.log('\n=== PROFILE CHECK START ===');
+        console.log('Request headers:', {
+            authorization: req.headers.authorization ? 'PRESENT' : 'MISSING',
+            cookie: req.headers.cookie ? 'PRESENT' : 'MISSING'
+        });
+        console.log('Cookies:', req.cookies);
         
         let token = null;
         
-        // First, try to get token from cookies
+        // Try to get token from cookies first
         if (req.cookies && req.cookies.token) {
             token = req.cookies.token;
-            console.log('Token found in cookies');
+            console.log('Token found in cookies (first 20 chars):', token.substring(0, 20) + '...');
         }
         // If not in cookies, try Authorization header
         else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
             token = req.headers.authorization.substring(7);
-            console.log('Token found in Authorization header');
+            console.log('Token found in Authorization header (first 20 chars):', token.substring(0, 20) + '...');
         }
         
         if (!token) {
-            console.log('No token found in cookies or headers');
+            console.log('No token found anywhere');
             return res.status(401).json({ 
-                message: 'No token provided',
-                isAuthenticated: false 
+                message: 'No authentication token provided',
+                isAuthenticated: false,
+                debug: {
+                    cookiesPresent: !!req.cookies,
+                    authHeaderPresent: !!req.headers.authorization
+                }
             });
         }
 
+        // Verify token
+        let decoded;
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            console.log('Token decoded successfully:', decoded);
-            
-            // Get user from database
-            const user = await User.findById(decoded.id).select('-password -otp -otpExpires');
-            
-            if (!user) {
-                console.log('User not found for decoded token');
-                return res.status(401).json({ 
-                    message: 'User not found',
-                    isAuthenticated: false 
-                });
-            }
-
-            console.log('Profile check successful for user:', user.email);
-            res.status(200).json({
-                isAuthenticated: true,
-                user: {
-                    id: user._id,
-                    user_id: user.user_id,
-                    name: user.name,
-                    email: user.email,
-                    phone_number: user.phone_number,
-                    role: user.role,
-                    isVerified: user.isVerified
-                }
-            });
+            const jwt = require('jsonwebtoken');
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+            console.log('Token decoded successfully. User ID:', decoded.id);
         } catch (tokenError) {
             console.log('Token verification failed:', tokenError.message);
             return res.status(401).json({ 
-                message: 'Invalid token',
+                message: 'Invalid or expired token',
+                isAuthenticated: false,
+                error: tokenError.message
+            });
+        }
+        
+        // Get user from database
+     
+        const user = await User.findById(decoded.id).select('-password -otp -otpExpires');
+        
+        if (!user) {
+            console.log('User not found for token');
+            return res.status(401).json({ 
+                message: 'User not found',
                 isAuthenticated: false 
             });
         }
+
+        console.log('Profile check successful for user:', user.email);
+        console.log('=== PROFILE CHECK END ===\n');
+        
+        res.status(200).json({
+            isAuthenticated: true,
+            user: {
+                id: user._id,
+                user_id: user.user_id,
+                name: user.name,
+                email: user.email,
+                phone_number: user.phone_number,
+                role: user.role,
+                isVerified: user.isVerified
+            }
+        });
+        
     } catch (error) {
         console.error('Profile check error:', error);
         res.status(500).json({ 
             message: 'Internal server error',
-            isAuthenticated: false 
+            isAuthenticated: false,
+            error: error.message
         });
     }
 });
@@ -90,31 +109,52 @@ router.get('/profile', async (req, res) => {
  * @desc    Register a new user and send OTP
  * @access  Public
  */
+// Add this enhanced error handling to your signup route in auth.js
 router.post('/signup', async (req, res) => {
     console.log('\n=== SIGNUP PROCESS START ===');
     console.log('Request body:', req.body);
+    console.log('Request headers:', req.headers);
+    console.log('Environment check:', {
+        NODE_ENV: process.env.NODE_ENV,
+        MONGODB_URI: process.env.MONGODB_URI ? 'SET' : 'MISSING',
+        JWT_SECRET: process.env.JWT_SECRET ? 'SET' : 'MISSING',
+        EMAIL_USER: process.env.EMAIL_USER ? 'SET' : 'MISSING',
+        EMAIL_PASS: process.env.EMAIL_PASS ? 'SET' : 'MISSING'
+    });
     
     try {
         const { name, phone_number, email, password } = req.body;
 
-        console.log('1. Extracted data:', { name, phone_number, email, password: '***' });
+        console.log('1. Extracted data:', { name, phone_number, email, password: password ? '***' : 'MISSING' });
 
-        // Validation
-        if (!name || !phone_number || !email || !password) {
-            console.log('❌ Validation failed: Missing required fields');
-            return res.status(400).json({ message: "All fields are required" });
+        // Enhanced validation with specific error messages
+        const errors = [];
+        if (!name || name.trim() === '') errors.push('Name is required');
+        if (!phone_number || phone_number.trim() === '') errors.push('Phone number is required');
+        if (!email || email.trim() === '') errors.push('Email is required');
+        if (!password || password.trim() === '') errors.push('Password is required');
+        
+        if (errors.length > 0) {
+            console.log('❌ Validation failed:', errors);
+            return res.status(400).json({ 
+                message: "Validation failed", 
+                errors: errors 
+            });
         }
         
+        // Email format validation
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             console.log('❌ Validation failed: Invalid email format');
             return res.status(400).json({ message: "Invalid email format" });
         }
         
+        // Password validation
         if (password.length < 8 || !/[!@#$%^&*]/.test(password)) {
             console.log('❌ Validation failed: Invalid password');
             return res.status(400).json({ message: "Password must be 8+ characters with a special character" });
         }
         
+        // Phone validation
         if (!/^\d{10}$/.test(phone_number)) {
             console.log('❌ Validation failed: Invalid phone number');
             return res.status(400).json({ message: "Phone number must be 10 digits" });
@@ -122,9 +162,32 @@ router.post('/signup', async (req, res) => {
 
         console.log('✅ All validations passed');
 
-        // Test email connection first
+        // Check database connection
+        const mongoose = require('mongoose');
+        console.log('Database connection state:', mongoose.connection.readyState);
+        if (mongoose.connection.readyState !== 1) {
+            console.log('❌ Database not connected');
+            return res.status(503).json({ 
+                message: "Database connection unavailable. Please try again later." 
+            });
+        }
+
+        // Test email connection BEFORE proceeding
         console.log('1.5. Testing email connection...');
-        const emailConnectionOk = await testEmailConnection();
+        const { testEmailConnection } = require('../utils/mailer');
+        
+        let emailConnectionOk = false;
+        try {
+            emailConnectionOk = await testEmailConnection();
+            console.log('Email connection test result:', emailConnectionOk);
+        } catch (emailTestError) {
+            console.log('❌ Email connection test threw error:', emailTestError.message);
+            return res.status(500).json({ 
+                message: "Email service is currently unavailable. Please try again later.",
+                error: emailTestError.message
+            });
+        }
+        
         if (!emailConnectionOk) {
             console.log('❌ Email connection failed');
             return res.status(500).json({ 
@@ -135,9 +198,19 @@ router.post('/signup', async (req, res) => {
 
         // Check if user already exists
         console.log('2. Checking for existing user...');
-        const existingUser = await User.findOne({ 
-            email: { $regex: new RegExp(`^${email}$`, 'i') } 
-        });
+        let existingUser;
+        try {
+            existingUser = await User.findOne({ 
+                email: { $regex: new RegExp(`^${email}$`, 'i') } 
+            });
+            console.log('Existing user query result:', existingUser ? 'FOUND' : 'NOT_FOUND');
+        } catch (dbError) {
+            console.log('❌ Database query error:', dbError.message);
+            return res.status(500).json({ 
+                message: "Database error occurred. Please try again.",
+                error: dbError.message
+            });
+        }
         
         if (existingUser) {
             console.log('Found existing user:', {
@@ -153,8 +226,16 @@ router.post('/signup', async (req, res) => {
                 });
             } else {
                 console.log('Deleting unverified existing user...');
-                await User.deleteOne({ _id: existingUser._id });
-                console.log('✅ Unverified user deleted');
+                try {
+                    await User.deleteOne({ _id: existingUser._id });
+                    console.log('✅ Unverified user deleted');
+                } catch (deleteError) {
+                    console.log('❌ Error deleting existing user:', deleteError.message);
+                    return res.status(500).json({ 
+                        message: "Error processing existing account. Please try again.",
+                        error: deleteError.message
+                    });
+                }
             }
         } else {
             console.log('✅ No existing user found');
@@ -162,77 +243,108 @@ router.post('/signup', async (req, res) => {
 
         // Generate OTP
         console.log('3. Generating OTP...');
+        const crypto = require('crypto');
         const otp = crypto.randomInt(100000, 999999).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
         console.log('Generated OTP:', otp);
         console.log('OTP expires at:', otpExpires);
-        console.log('OTP type:', typeof otp);
 
         // Create new user
         console.log('4. Creating new user object...');
-        const newUser = new User({
-            name,
-            phone_number,
-            email: email.toLowerCase(),
-            password,
-            otp,
-            otpExpires,
-            isVerified: false,
-            role: 'user'
-        });
-
-        console.log('User object created, OTP stored as:', newUser.otp);
-        console.log('About to save user...');
+        
+        
+        let newUser;
+        try {
+            newUser = new User({
+                name: name.trim(),
+                phone_number: phone_number.trim(),
+                email: email.toLowerCase().trim(),
+                password: password, // Let the pre-save hook handle hashing
+                otp: otp,
+                otpExpires: otpExpires,
+                isVerified: false,
+                role: 'user'
+            });
+            console.log('✅ User object created');
+        } catch (userCreateError) {
+            console.log('❌ Error creating user object:', userCreateError.message);
+            return res.status(500).json({ 
+                message: "Error creating user account.",
+                error: userCreateError.message
+            });
+        }
 
         // Save user
         console.log('5. Saving user to database...');
-        const savedUser = await newUser.save();
-        
-        console.log('✅ User saved successfully!');
-        console.log('User ID:', savedUser._id);
-        console.log('Generated user_id:', savedUser.user_id);
-        console.log('Saved OTP in DB:', savedUser.otp);
-        
-        // Verify the user was actually saved with OTP
-        console.log('6. Verifying user in database...');
-        const verifyUser = await User.findById(savedUser._id);
-        console.log('Verification - User exists:', !!verifyUser);
-        console.log('Verification - OTP in DB:', verifyUser ? verifyUser.otp : 'USER NOT FOUND');
-        console.log('Verification - OTP Expires:', verifyUser ? verifyUser.otpExpires : 'USER NOT FOUND');
-        
-        if (!verifyUser) {
-            console.log('❌ CRITICAL: User not found after save!');
-            return res.status(500).json({ message: "User creation failed - not saved to database" });
+        let savedUser;
+        try {
+            savedUser = await newUser.save();
+            console.log('✅ User saved successfully!');
+            console.log('User ID:', savedUser._id);
+            console.log('Generated user_id:', savedUser.user_id);
+        } catch (saveError) {
+            console.log('❌ Error saving user:', saveError.message);
+            console.log('Save error details:', saveError);
+            
+            // Handle specific MongoDB errors
+            if (saveError.code === 11000) {
+                return res.status(400).json({ 
+                    message: "An account with this email or phone number already exists." 
+                });
+            }
+            
+            return res.status(500).json({ 
+                message: "Error saving user account.",
+                error: saveError.message
+            });
         }
         
-        if (!verifyUser.otp) {
-            console.log('❌ CRITICAL: OTP not saved to database!');
-            return res.status(500).json({ message: "OTP not saved to database" });
+        // Verify the user was actually saved
+        console.log('6. Verifying user in database...');
+        let verifyUser;
+        try {
+            verifyUser = await User.findById(savedUser._id);
+            console.log('Verification - User exists:', !!verifyUser);
+            console.log('Verification - OTP in DB:', verifyUser ? verifyUser.otp : 'USER NOT FOUND');
+        } catch (verifyError) {
+            console.log('❌ Error verifying saved user:', verifyError.message);
+            return res.status(500).json({ 
+                message: "Error verifying user creation.",
+                error: verifyError.message
+            });
+        }
+        
+        if (!verifyUser || !verifyUser.otp) {
+            console.log('❌ CRITICAL: User or OTP not properly saved!');
+            return res.status(500).json({ 
+                message: "User creation failed - data not properly saved" 
+            });
         }
 
         // Send OTP email
         console.log('7. Attempting to send OTP email...');
+        const { sendOTPEmail } = require('../utils/mailer');
+        
         try {
-            // Check if sendOTPEmail is available
-            if (typeof sendOTPEmail !== 'function') {
-                throw new Error('sendOTPEmail is not a function - check mailer import');
-            }
-            
             const emailResult = await sendOTPEmail(savedUser.email, otp);
             console.log('✅ Email sent successfully');
             console.log('Email result:', emailResult);
             
         } catch (emailError) {
             console.log('❌ Email sending failed:', emailError.message);
-            console.log('Email error details:', emailError);
+            console.log('Email error stack:', emailError.stack);
             
             // Delete the user since email failed
-            await User.deleteOne({ _id: savedUser._id });
-            console.log('User deleted due to email failure');
+            try {
+                await User.deleteOne({ _id: savedUser._id });
+                console.log('User deleted due to email failure');
+            } catch (deleteError) {
+                console.log('❌ Failed to delete user after email failure:', deleteError.message);
+            }
             
             return res.status(500).json({ 
-                message: "Failed to send verification email. Please try again.",
+                message: "Failed to send verification email. Please check your email address and try again.",
                 error: emailError.message
             });
         }
@@ -242,28 +354,27 @@ router.post('/signup', async (req, res) => {
 
         res.status(201).json({ 
             message: "Registration successful! Please check your email for an OTP to verify your account.",
+            success: true,
             debug: {
                 userId: savedUser._id,
                 userIdGenerated: savedUser.user_id,
-                otpSaved: !!savedUser.otp,
                 emailSent: true
             }
         });
         
     } catch (error) {
-        console.log('❌ SIGNUP ERROR:', error.message);
+        console.log('❌ SIGNUP UNEXPECTED ERROR:', error.message);
+        console.log('Error name:', error.name);
         console.log('Error stack:', error.stack);
-        console.log('Error details:', error);
         console.log('=== SIGNUP PROCESS END (ERROR) ===\n');
         
         res.status(500).json({ 
-            message: "Internal server error",
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            message: "An unexpected error occurred. Please try again.",
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+            errorType: error.name
         });
     }
 });
-
 
 
 // Add this route to your users router (add it after the /profile route)

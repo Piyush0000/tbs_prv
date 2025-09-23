@@ -191,6 +191,41 @@ const handleOtpSubmit = async (e) => {
     }
   };
 
+  // Make sure your AuthContext handles both cookie and localStorage tokens
+const checkAuth = async () => {
+    try {
+        // Try with credentials to send cookies
+        const response = await fetch(`${API_URL}/auth/profile`, {
+            credentials: 'include', // This is crucial for cookies
+            headers: {
+                'Content-Type': 'application/json',
+                // Also try Authorization header if you have a token in localStorage
+                ...(localStorage.getItem('token') && {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                })
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.isAuthenticated) {
+                setUser(data.user);
+                setIsAuthenticated(true);
+            }
+        } else {
+            console.log('Auth check failed:', response.status);
+            setIsAuthenticated(false);
+            setUser(null);
+        }
+    } catch (error) {
+        console.error('Authentication check failed:', error);
+        setIsAuthenticated(false);
+        setUser(null);
+    } finally {
+        setLoading(false);
+    }
+};
+
   const inputStyles = "w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-transparent px-4 py-3 text-gray-700 dark:text-gray-200 focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 transition-colors";
   const socialButtonStyles = "w-full flex items-center justify-center rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-3 font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors";
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+dotenv.config();
 const cors = require('cors');
 const path = require('path');
 const logger = require('./utils/logger');
@@ -45,33 +46,49 @@ if (!process.env.JWT_SECRET || !process.env.MONGODB_URI || !process.env.RAZORPAY
     process.exit(1);
 }
 
+
+
+
 const app = express();
 
 // IMPORTANT: Configure proxy trust BEFORE rate limiting
 // This fixes the X-Forwarded-For header validation error
+// Replace this section in your index.js (around lines 40-50)
+
+// IMPORTANT: Configure proxy trust BEFORE rate limiting
 if (process.env.NODE_ENV === 'production') {
-    // In production, trust the first proxy (common for most deployment scenarios)
+    // In production, trust the first proxy only
     app.set('trust proxy', 1);
 } else {
-    // In development, you might want to trust all proxies or set specific IPs
-    // For local development with reverse proxy testing:
-    app.set('trust proxy', true);
+    // In development, for localhost testing, disable or be more specific
+    app.set('trust proxy', 'loopback'); // Only trust loopback addresses
+    // Alternative: app.set('trust proxy', false); // Completely disable
 }
-
 app.use(cookieParser());
 
 // IMPORTANT: Webhook routes with raw body parser MUST come BEFORE express.json()
 // app.use('/api/webhooks/razorpay', express.raw({type: 'application/json'}), webhookRoutes);
 
 // FIXED: Configure CORS for localhost development
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://www.thebookshelves.com',
+];
+
 const corsOptions = {
-    origin: process.env.NODE_ENV === 'production'
-        ? 'https://www.thebookshelves.com'
-        : ['https://www.thebookshelves.com', 'https://www.thebookshelves.com'], // Support both HTTP and HTTPS localhost
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS not allowed for this origin: " + origin));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 };
+
+
 
 console.log('CORS configured for origin:', corsOptions.origin);
 app.use(cors(corsOptions));
