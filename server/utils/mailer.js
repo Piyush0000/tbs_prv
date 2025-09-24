@@ -31,22 +31,22 @@ const initializeTransporter = () => {
         
         // More robust Gmail configuration with additional options
         transporter = nodemailer.createTransport({
-            service: 'gmail', 
+            // service: 'gmail', 
             // Use service instead of manual SMTP config
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
             },
-            tls: {
-                rejectUnauthorized: false
-            },
+            // tls: {
+            //     rejectUnauthorized: false
+            // },
             secure: true, // Use SSL
-            host : process.env.EMAIL_HOST || 'smtp.gmail.com',
+            host : 'smtp.zoho.in',
             port: 465, // SSL port
             // Additional timeout settings
-            // connectionTimeout: 60000, // 60 seconds
-            greetingTimeout: 30000,    // 30 seconds
-            socketTimeout: 60000       // 60 seconds
+            // // connectionTimeout: 60000, // 60 seconds
+            // greetingTimeout: 30000,    // 30 seconds
+            // socketTimeout: 60000       // 60 seconds
         });
         
         log('✅ Transporter created successfully');
