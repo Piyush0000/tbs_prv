@@ -31,7 +31,8 @@ const initializeTransporter = () => {
         
         // More robust Gmail configuration with additional options
         transporter = nodemailer.createTransport({
-            service: 'gmail', // Use service instead of manual SMTP config
+            service: 'gmail', 
+            // Use service instead of manual SMTP config
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
@@ -39,6 +40,9 @@ const initializeTransporter = () => {
             tls: {
                 rejectUnauthorized: false
             },
+            secure: true, // Use SSL
+            host: 'smtp.gmail.com',
+            port: 465, // SSL port
             // Additional timeout settings
             // connectionTimeout: 60000, // 60 seconds
             greetingTimeout: 30000,    // 30 seconds
