@@ -41,7 +41,7 @@ const initializeTransporter = () => {
                 rejectUnauthorized: false
             },
             secure: true, // Use SSL
-            host: 'smtp.gmail.com',
+            host : process.env.EMAIL_HOST || 'smtp.gmail.com',
             port: 465, // SSL port
             // Additional timeout settings
             // connectionTimeout: 60000, // 60 seconds
