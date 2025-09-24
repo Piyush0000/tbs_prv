@@ -53,17 +53,15 @@ const app = express();
 
 // IMPORTANT: Configure proxy trust BEFORE rate limiting
 // This fixes the X-Forwarded-For header validation error
-// Replace this section in your index.js (around lines 40-50)
-
-// IMPORTANT: Configure proxy trust BEFORE rate limiting
 if (process.env.NODE_ENV === 'production') {
-    // In production, trust the first proxy only
+    // In production, trust the first proxy (common for most deployment scenarios)
     app.set('trust proxy', 1);
 } else {
-    // In development, for localhost testing, disable or be more specific
-    app.set('trust proxy', 'loopback'); // Only trust loopback addresses
-    // Alternative: app.set('trust proxy', false); // Completely disable
+    // In development, you might want to trust all proxies or set specific IPs
+    // For local development with reverse proxy testing:
+    app.set('trust proxy', true);
 }
+
 app.use(cookieParser());
 
 // IMPORTANT: Webhook routes with raw body parser MUST come BEFORE express.json()

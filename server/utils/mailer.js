@@ -40,7 +40,7 @@ const initializeTransporter = () => {
                 rejectUnauthorized: false
             },
             // Additional timeout settings
-            connectionTimeout: 60000, // 60 seconds
+            // connectionTimeout: 60000, // 60 seconds
             greetingTimeout: 30000,    // 30 seconds
             socketTimeout: 60000       // 60 seconds
         });
