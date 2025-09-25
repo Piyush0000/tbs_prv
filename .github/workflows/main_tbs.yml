@@ -26,7 +26,7 @@ jobs:
           npm install
           npm run build --if-present
           npm run test --if-present
-      
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
@@ -45,6 +45,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
+          path: ./server  # ⬅️ Download into ./server
+
+      - name: Move server files to root
+        run: |
+          cp -r ./server/* .  # ⬅️ Move files from server to root for Azure deployment
       
       - name: Login to Azure
         uses: azure/login@v2
