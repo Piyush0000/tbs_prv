@@ -14,6 +14,9 @@ function MainComponent() {
   const { data: user, loading: userLoading, refetch: refetchUser } = useUser();
   const { refreshToken } = useAuth();
 
+  // Add search state and handler
+  const [searchQuery, setSearchQuery] = useState("");
+
   const DEPOSIT_FEE = 29900; // ₹299 in paise
 
   const plans = [
@@ -37,6 +40,26 @@ function MainComponent() {
     setSelectedPlan((prevSelectedPlan) =>
       prevSelectedPlan?.id === plan.id ? null : plan
     );
+  };
+
+  // Add search handler
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    // You can implement search logic here or navigate to search page
+    console.log("Searching for:", query);
+  };
+
+  // Add logout handler
+  const handleLogout = async () => {
+    try {
+      // Implement your logout logic here
+      console.log("Logging out...");
+      // Example: Clear tokens, redirect, etc.
+      // await logout();
+      // window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
   const loadRazorpayScript = () => {
@@ -110,7 +133,13 @@ function MainComponent() {
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
-      <Header />
+      {/* Fixed Header with all required props */}
+      <Header 
+        user={user} 
+        onSearch={handleSearch} 
+        onLogout={handleLogout} 
+      />
+      
       <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-header font-bold mb-4">

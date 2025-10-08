@@ -16,9 +16,7 @@ export function CafeCard({ cafe, onExpand }) {
           alt={`Image of ${cafe.name}`}
           className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-2 right-2 bg-white dark:bg-black text-black dark:text-white px-2 py-1 rounded-full shadow-md text-xs sm:text-sm">
-          ⭐{cafe.rating}/5
-        </div>
+        {/* REMOVED RATING BADGE */}
       </div>
       <h3 className="text-sm sm:text-lg font-header font-bold mt-2 text-text-light dark:text-text-dark line-clamp-1">
         {cafe.name}
@@ -62,8 +60,6 @@ export function CafeExpanded({ cafe, onClose }) {
         author: book.author,
         publisher: book.publisher,
         description: book.description,
-        //audioSummary: book.audio_url,
-        ratings: book.ratings || "N/A",
         language: book.language,
         available: book.available,
         is_free: book.is_free,
@@ -113,9 +109,7 @@ export function CafeExpanded({ cafe, onClose }) {
                 className="w-full h-64 sm:h-72 object-cover rounded-lg"
                 loading="lazy"
               />
-              <div className="absolute bottom-2 left-2 bg-white dark:bg-black text-black dark:text-white px-2 py-1 rounded-full shadow-md text-xs sm:text-sm">
-                ⭐{cafe.rating}/5
-              </div>
+              {/* REMOVED RATING BADGE */}
             </div>
           </div>
           <div className="w-full text-center sm:text-left">
@@ -148,12 +142,6 @@ export function CafeExpanded({ cafe, onClose }) {
             <p className="text-xs sm:text-sm text-text-light dark:text-text-dark mb-4">
               {cafe.description}
             </p>
-           {/* {cafe.audioSummary && (
-              <audio controls className="w-full mb-4">
-                <source src={cafe.audioSummary} type="audio/mpeg" />
-                Your browser does not support the audio element.
-              </audio>
-            )} */}
           </div>
 
           {/* Available Books Section */}

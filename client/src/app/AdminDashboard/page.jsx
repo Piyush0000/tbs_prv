@@ -5,6 +5,7 @@ import BooksSection from "./BooksSection";
 import CafesSection from "./CafesSection";
 import TransactionsSection from "./TransactionsSection";
 import UsersSection from "./UsersSection";
+import FeaturedSection from "./FeaturedSection";
 
 function AdminDashboard() {
   const { refreshToken } = useAuth();
@@ -171,19 +172,19 @@ function AdminDashboard() {
         // Step 4: Fetch users
         console.log('Step 4: Fetching users...');
         try {
-  const usersData = await safeFetch(
-    `${apiUrl}/users`,
-    {
-      headers: { Authorization: `Bearer ${token}` }
-    },
-    abortController.signal
-  );
-  setUsers(Array.isArray(usersData) ? usersData : []);
-  console.log('Users loaded:', usersData.length);
-} catch (usersError) {
-  console.error('Users fetch failed:', usersError);
-  setUsers([]);
-}
+          const usersData = await safeFetch(
+            `${apiUrl}/users`,
+            {
+              headers: { Authorization: `Bearer ${token}` }
+            },
+            abortController.signal
+          );
+          setUsers(Array.isArray(usersData) ? usersData : []);
+          console.log('Users loaded:', usersData.length);
+        } catch (usersError) {
+          console.error('Users fetch failed:', usersError);
+          setUsers([]);
+        }
 
         // Step 5: Fetch transactions
         console.log('Step 5: Fetching transactions...');
@@ -231,8 +232,6 @@ function AdminDashboard() {
       abortController.abort();
     };
   }, []);
-
-  
 
   // Modal drag handlers
   const handleModalMouseDown = (e) => {
@@ -637,23 +636,22 @@ function AdminDashboard() {
   };
 
   const handleDeleteUser = async (userId) => {
-  const confirmed = window.confirm("Are you sure you want to delete this user?");
-  if (!confirmed) return;
+    const confirmed = window.confirm("Are you sure you want to delete this user?");
+    if (!confirmed) return;
 
-  try {
-    const token = localStorage.getItem("token");
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to delete user");
-    setUsers(users.filter((u) => u.user_id !== userId));
-  } catch (err) {
-    console.error(err);
-    alert(err.message);
-  }
-};
-
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to delete user");
+      setUsers(users.filter((u) => u.user_id !== userId));
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
+  };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -840,7 +838,7 @@ function AdminDashboard() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex space-x-4">
-            {["books", "cafes", "users", "transactions"].map((tab) => (
+            {["books", "cafes", "users", "transactions", "featured"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -855,27 +853,31 @@ function AdminDashboard() {
             ))}
           </div>
           <div className="flex items-center space-x-3">
-            {/* Import/Export Buttons */}
-            <button
-              onClick={handleImportClick}
-              className="px-4 py-2 rounded-full bg-purple-600 text-white font-medium hover:bg-purple-700 flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-              <span>Import CSV</span>
-            </button>
-            <button
-              onClick={handleExportClick}
-              className="px-4 py-2 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <span>Export CSV</span>
-            </button>
-            {/* Add Button */}
-            {activeTab !== "transactions" && (
+            {/* Import/Export Buttons - Hide for featured tab */}
+            {activeTab !== "featured" && (
+              <>
+                <button
+                  onClick={handleImportClick}
+                  className="px-4 py-2 rounded-full bg-purple-600 text-white font-medium hover:bg-purple-700 flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                  </svg>
+                  <span>Import CSV</span>
+                </button>
+                <button
+                  onClick={handleExportClick}
+                  className="px-4 py-2 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <span>Export CSV</span>
+                </button>
+              </>
+            )}
+            {/* Add Button - Hide for transactions and featured tabs */}
+            {activeTab !== "transactions" && activeTab !== "featured" && (
               <button
                 onClick={openAddModal}
                 className="px-4 py-2 rounded-full bg-green-600 text-white font-medium hover:bg-green-700"
@@ -894,14 +896,16 @@ function AdminDashboard() {
         )}
         {activeTab === "users" && (
           <UsersSection
-  data={users}
-  onEdit={openEditModal}
-  onDelete={handleDeleteUser}
-/>
-
+            data={users}
+            onEdit={openEditModal}
+            onDelete={handleDeleteUser}
+          />
         )}
         {activeTab === "transactions" && (
           <TransactionsSection data={transactions} setData={setTransactions} />
+        )}
+        {activeTab === "featured" && (
+          <FeaturedSection />
         )}
       </div>
 

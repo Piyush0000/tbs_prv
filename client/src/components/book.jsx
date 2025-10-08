@@ -14,9 +14,7 @@ function BookCard({ book, onExpand }) {
           alt={`Cover of ${book.title}`}
           className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-2 right-2 bg-white dark:bg-black text-black dark:text-white px-2 py-1 rounded-full shadow-md text-xs sm:text-sm">
-          ⭐{book.ratings}/5
-        </div>
+        {/* REMOVED RATING BADGE */}
       </div>
       <h3 className="text-sm sm:text-base font-header font-bold mt-2 text-text-light dark:text-text-dark text-center line-clamp-2">
         {book.title}
@@ -36,7 +34,6 @@ function BookExpanded({ book, onClose }) {
     setShowPdf(true);
   };
 
-  // Convert Google Drive URL to embeddable format if necessary
   const getEmbeddablePdfUrl = (url) => {
     if (url && url.includes("drive.google.com")) {
       const fileIdMatch = url.match(/[-\w]{25,}/);
@@ -75,9 +72,7 @@ function BookExpanded({ book, onClose }) {
                 className="w-full h-64 sm:h-72 object-cover rounded-lg"
                 loading="lazy"
               />
-              <div className="absolute bottom-2 left-2 bg-white dark:bg-black text-black dark:text-white px-2 py-1 rounded-full shadow-md text-xs sm:text-sm">
-                ⭐{book.ratings}/5
-              </div>
+              {/* REMOVED RATING BADGE */}
             </div>
             <div className="w-full text-center sm:text-left">
               <h2 className="text-xl sm:text-2xl font-header font-bold mb-2 text-text-light dark:text-text-dark">

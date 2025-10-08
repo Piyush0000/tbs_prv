@@ -5,6 +5,7 @@ import Link from "next/link";
 function Header({ user, onSearch, onLogout }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const userMenuRef = useRef(null);
 
   // More robust authentication check
@@ -33,6 +34,27 @@ function Header({ user, onSearch, onLogout }) {
     };
   }, [userMenuRef]);
 
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    // Call the parent's onSearch function if it exists
+    if (onSearch && typeof onSearch === 'function') {
+      onSearch(query, 'all'); // Search both books and cafes
+    }
+  };
+
+  // Handle Enter key press
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (onSearch && typeof onSearch === 'function') {
+        onSearch(searchQuery, 'all');
+      }
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark">
       <div className="container flex h-16 items-center justify-between px-4 sm:px-6 space-x-4">
@@ -56,19 +78,21 @@ function Header({ user, onSearch, onLogout }) {
 
         {/* Search Bar - Desktop */}
         <div className="hidden md:flex flex-1 max-w-lg mx-auto">
-            <div className="relative w-full">
-                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                 </div>
-                <input
-                    type="text"
-                    placeholder="Search books, authors, or cafes..."
-                    onChange={onSearch}
-                    className="w-full py-2 pl-10 pr-4 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
-                />
+          <div className="relative w-full">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
             </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onKeyPress={handleKeyPress}
+              placeholder="Search books, authors, or cafes..."
+              className="w-full py-2 pl-10 pr-4 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
+            />
+          </div>
         </div>
 
         {/* Desktop Navigation */}
@@ -131,13 +155,6 @@ function Header({ user, onSearch, onLogout }) {
                   >
                     Profile
                   </Link>
-                  {/* <Link 
-                    href="/my-books" 
-                    className="block px-4 py-2 text-sm text-text-light dark:text-text-dark hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={() => setIsUserMenuOpen(false)}
-                  >
-                    My Books
-                  </Link> */}
                   <button 
                     onClick={() => {
                       setIsUserMenuOpen(false);
@@ -179,14 +196,23 @@ function Header({ user, onSearch, onLogout }) {
       {/* Mobile Menu Dropdown */}
       {isMenuOpen && (
         <div className="md:hidden">
-            <div className="px-4 pb-4 pt-2">
-                 <input
-                    type="text"
-                    placeholder="Search books or cafes..."
-                    onChange={onSearch}
-                    className="w-full px-4 py-2 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
-                />
+          <div className="px-4 pb-4 pt-2">
+            <div className="relative w-full">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onKeyPress={handleKeyPress}
+                placeholder="Search books or cafes..."
+                className="w-full px-4 py-2 pl-10 rounded-full border border-border-light dark:border-border-dark bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark"
+              />
             </div>
+          </div>
           <nav className="flex flex-col items-center space-y-2 py-4 border-t border-border-light dark:border-border-dark">
             <Link 
               href="/how-it-works" 

@@ -7,7 +7,7 @@ import Carousel from "../components/carousel";
 import Footer from "../components/footer";
 import Header from "../components/header";
 import ThemeToggle from "../components/ThemeToggle";
-import { useAuth } from './Hooks/AuthContext'; // Import the useAuth hook'
+import { useAuth } from './Hooks/AuthContext';
 
 function TheBookShelves() {
   const { user, isLoggedIn, loading, logout } = useAuth();
@@ -28,13 +28,12 @@ function TheBookShelves() {
   }, []);
 
   useEffect(() => {
-  // Check if user authentication state has changed
-  if (user) {
-    console.log('User authenticated:', user);
-  } else if (!loading) {
-    console.log('User not authenticated');
-  }
-}, [user, loading]);
+    if (user) {
+      console.log('User authenticated:', user);
+    } else if (!loading) {
+      console.log('User not authenticated');
+    }
+  }, [user, loading]);
 
   const fetchBooks = async (query = "") => {
     setLoadingBooks(true);
@@ -58,7 +57,6 @@ function TheBookShelves() {
         description: book.description,
         audioSummary: book.audio_url,
         pdfUrl: book.pdf_url,
-        ratings: book.ratings || "N/A",
         language: book.language,
         available: book.available,
         is_free: book.is_free,
@@ -95,7 +93,6 @@ function TheBookShelves() {
         discounts: cafe.discount,
         priceRange: `₹${cafe.average_bill}`,
         description: cafe.description || "No description available",
-        rating: cafe.ratings || "N/A",
       }));
       setCafes(mappedCafes);
     } catch (err) {
@@ -106,23 +103,31 @@ function TheBookShelves() {
     }
   };
 
-  const handleSearch = (e) => {
-    const query = e.target.value;
-    setSearchQuery(query);
+  const handleSearch = (query, type = 'all') => {
+  setSearchQuery(query);
+  
+  // Search based on type
+  if (type === 'books') {
+    fetchBooks(query);
+  } else if (type === 'cafes') {
+    fetchCafes(query);
+  } else {
+    // Search both
     fetchBooks(query);
     fetchCafes(query);
-  };
-  const handleLogout = async () => {
-  console.log('Logout initiated from header');
-  const success = await logout();
-  if (success) {
-    console.log('Logout successful, reloading page.');
-    // Reload the page to clear state and show the public view
-    window.location.reload();
-  } else {
-    console.error('Logout failed');
   }
 };
+
+  const handleLogout = async () => {
+    console.log('Logout initiated from header');
+    const success = await logout();
+    if (success) {
+      console.log('Logout successful, reloading page.');
+      window.location.reload();
+    } else {
+      console.error('Logout failed');
+    }
+  };
 
   useEffect(() => {
     fetchBooks();
@@ -132,9 +137,9 @@ function TheBookShelves() {
   const carouselSlides = [
     {
       id: 1,
-      title: "Borrow Books While You Sip Coffee at Kolkata’s Cosiest Cafés",
+      title: "Borrow Books While You Sip Coffee at Kolkata's Cosiest Cafés",
       description:
-        "Join The Bookshelves — India’s first café-based book borrowing service. For just ₹49, read unlimited books in your favourite coffee spots.",
+        "Join The Bookshelves — India's first café-based book borrowing service. For just ₹49, read unlimited books in your favourite coffee spots.",
       images: ["/book1.png", "/book2.png", "/book3.png"],
       buttonText: "Lets Get Started",
     },
@@ -167,15 +172,14 @@ function TheBookShelves() {
     },
     {
       question: "What if I lose a book?",
-      answer: "You can replace it or pay the book’s cost. That’s all.",
+      answer: "You can replace it or pay the book's cost. That's all.",
     },
     {
       question: "Is it only for Kolkata?",
-      answer: "For now, yes. But we’re expanding soon!",
+      answer: "For now, yes. But we're expanding soon!",
     },
   ];
 
-  // Loading state from MainPage.jsx
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
@@ -195,22 +199,15 @@ function TheBookShelves() {
     );
   }
 
-  // If not logged in, show the public page with a login button
-  // If logged in, show the public page but with user name and logout button in header
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark">
-     
-
-
-
-
-<Header
-  user={user}
-  location="New Town, Kolkata"
-  onLocationChange={() => {}}
-  onSearch={handleSearch}
-  onLogout={handleLogout} // <-- ADD THIS LINE
-/>
+      <Header
+        user={user}
+        location="New Town, Kolkata"
+        onLocationChange={() => {}}
+        onSearch={handleSearch}
+        onLogout={handleLogout}
+      />
       <main className="px-4 sm:px-4 md:px-6 py-8 w-full sm:w-[80%] mx-auto">
         {!searchQuery && (
           <section id="Carousel" className="mb-12 w-full">
@@ -248,7 +245,6 @@ function TheBookShelves() {
             </div>
           </section>
         )}
-        {/* How It Works Section */}
         {!searchQuery && (
           <section
             id="how-it-works"
@@ -299,7 +295,6 @@ function TheBookShelves() {
             </div>
           </section>
         )}
-        {/* Books Section */}
         <section id="Book Section" className="mb-12 mt-8">
           <h2 className="text-2xl sm:text-4xl text-center font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             New Books Every Month!
@@ -331,7 +326,6 @@ function TheBookShelves() {
             </>
           )}
         </section>
-        {/* Cafes Section */}
         <section id="Cafe Section" className="mb-12 mt-8">
           <h2 className="text-2xl sm:text-4xl text-center font-bold font-header text-primary-light dark:text-primary-dark mb-4 sm:mb-6">
             Find Bookshelves Near You!
