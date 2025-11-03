@@ -71,6 +71,7 @@ app.use(cookieParser());
 const allowedOrigins = [
   'http://localhost:3000',
   'https://www.thebookshelves.com',
+    'https://tbs-prv-iota.vercel.app/',
 ];
 
 const corsOptions = {
