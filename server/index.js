@@ -303,7 +303,7 @@ process.on('SIGINT', async () => {
 connectDB();
 
 // Start server immediately (don't wait for DB connection)
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT ||8080;
 
 const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server running on port ${PORT}`);
