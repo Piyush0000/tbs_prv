@@ -304,13 +304,22 @@ connectDB();
 
 // Start server immediately (don't wait for DB connection)
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+
+const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Proxy trust setting: ${app.get('trust proxy')}`);
     console.log('💳 Payment system initialized with Razorpay integration');
     console.log(`🔗 CORS enabled for: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
 });
+
+// const server = app.listen(PORT, () => {
+//     console.log(`🚀 Server running on port ${PORT}`);
+//     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+//     console.log(`🔒 Proxy trust setting: ${app.get('trust proxy')}`);
+//     console.log('💳 Payment system initialized with Razorpay integration');
+//     console.log(`🔗 CORS enabled for: ${Array.isArray(corsOptions.origin) ? corsOptions.origin.join(', ') : corsOptions.origin}`);
+// });
 
 // Handle server errors
 server.on('error', (error) => {
